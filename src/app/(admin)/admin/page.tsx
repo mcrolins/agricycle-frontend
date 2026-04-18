@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { 
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area 
+} from "recharts";
 import { apiFetch } from "@/app/lib/api";
-import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
+import { downloadCsv, downloadCsvFromText, printCurrentPage } from "@/app/lib/reportUtils";
 
 type TimelineEntry = {
   period: string;
@@ -66,39 +69,6 @@ function StatCard({ label, value, sub, accent = false }: { label: string; value:
   );
 }
 
-function TimelineChart({ data, valueKey, label, unit = "", color = "bg-[var(--brand)]" }: { data: TimelineEntry[]; valueKey: string; label: string; unit?: string; color?: string }) {
-  if (!data.length) return <p className="py-4 text-center text-sm text-neutral-500">No data available.</p>;
-  const maxVal = Math.max(...data.map((d) => Number((d as Record<string, unknown>)[valueKey]) || 0), 1);
-
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{label}</p>
-      <div className="flex items-end gap-1" style={{ height: "120px" }}>
-        {data.map((entry, i) => {
-          const val = Number((entry as Record<string, unknown>)[valueKey]) || 0;
-          const pct = (val / maxVal) * 100;
-          return (
-            <div key={i} className="group relative flex flex-1 flex-col items-center justify-end" style={{ height: "100%" }}>
-              <div
-                className={`w-full min-w-1 ${color} rounded-t-md transition-all duration-300 group-hover:opacity-80`}
-                style={{ height: `${Math.max(pct, 4)}%` }}
-              />
-              <div className="pointer-events-none absolute -top-10 z-10 hidden rounded-lg bg-neutral-900 px-2 py-1 text-[10px] font-semibold text-white shadow-lg group-hover:block whitespace-nowrap">
-                {val.toLocaleString()}{unit}
-                <br />
-                {formatPeriod(entry.period)}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex justify-between text-[10px] text-neutral-400">
-        <span>{formatPeriod(data[0].period)}</span>
-        {data.length > 1 && <span>{formatPeriod(data[data.length - 1].period)}</span>}
-      </div>
-    </div>
-  );
-}
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminReport | null>(null);
@@ -106,22 +76,87 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState("month");
 
+  // Filters State
+  // Users
+  const [userQuery, setUserQuery] = useState("");
+  const [userDateJoined, setUserDateJoined] = useState("");
+  const [userLocation, setUserLocation] = useState("");
+  
+  // Listings
+  const [listingUserQuery, setListingUserQuery] = useState("");
+  const [listingWasteType, setListingWasteType] = useState("");
+  const [listingLocation, setListingLocation] = useState("");
+  
+  // Orders
+  const [orderQuery, setOrderQuery] = useState("");
+  const [orderLocation, setOrderLocation] = useState("");
+
+  const handleDownloadUsers = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (userQuery) params.append("user_query", userQuery);
+      if (userDateJoined) params.append("user_date_joined", userDateJoined);
+      if (userLocation) params.append("user_location", userLocation);
+      const csv = await apiFetch<string>(`/api/reports/admin/users.csv/?${params.toString()}`, {}, { auth: true });
+      downloadCsvFromText("admin_users.csv", csv);
+    } catch (err: any) {
+      alert("Failed to download users CSV: " + err.message);
+    }
+  };
+
+  const handleDownloadListings = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (listingUserQuery) params.append("listing_user_query", listingUserQuery);
+      if (listingWasteType) params.append("listing_waste_type", listingWasteType);
+      if (listingLocation) params.append("listing_location", listingLocation);
+      const csv = await apiFetch<string>(`/api/reports/admin/listings.csv/?${params.toString()}`, {}, { auth: true });
+      downloadCsvFromText("admin_listings.csv", csv);
+    } catch (err: any) {
+      alert("Failed to download listings CSV: " + err.message);
+    }
+  };
+
+  const handleDownloadOrders = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (orderQuery) params.append("order_query", orderQuery);
+      if (orderLocation) params.append("order_location", orderLocation);
+      const csv = await apiFetch<string>(`/api/reports/admin/orders.csv/?${params.toString()}`, {}, { auth: true });
+      downloadCsvFromText("admin_orders.csv", csv);
+    } catch (err: any) {
+      alert("Failed to download orders CSV: " + err.message);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
-    apiFetch<AdminReport>(`/api/reports/admin/?granularity=${granularity}`)
-      .then((d) => {
-        if (!mounted) return;
-        setData(d);
-      })
-      .catch((err) => {
-        if (mounted) setError(err instanceof Error ? err.message : "Failed to load admin reports");
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+    const fetchData = () => {
+      apiFetch<AdminReport>(`/api/reports/admin/?granularity=${granularity}`)
+        .then((d) => {
+          if (!mounted) return;
+          setData(d);
+          setError(null);
+        })
+        .catch((err) => {
+          if (mounted) setError(err instanceof Error ? err.message : "Failed to load admin reports");
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    };
 
-    return () => { mounted = false; };
+    // Initial fetch
+    fetchData();
+
+    // Poll every 30 seconds
+    const intervalId = setInterval(fetchData, 30000);
+
+    return () => { 
+      mounted = false; 
+      clearInterval(intervalId);
+    };
   }, [granularity]);
 
   function exportAdminReport() {
@@ -213,19 +248,73 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Transactions Chart */}
+            {/* Transactions Chart (Histogram) */}
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Transaction Volume</h2>
-              <div className="mt-4">
-                <TimelineChart data={data.total_platform_transactions.timeline} valueKey="amount" label="Value Traded (KES)" unit=" KES" />
+              <p className="text-xs text-neutral-500 mb-4">Value Traded (KES)</p>
+              <div className="h-48">
+                {data.total_platform_transactions.timeline.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={data.total_platform_transactions.timeline.map((d) => ({
+                        ...d,
+                        periodStr: formatPeriod(d.period),
+                        amount: Number(d.amount) || 0,
+                      }))}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                      <XAxis dataKey="periodStr" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => `KSh ${v.toLocaleString()}`} />
+                      <Tooltip 
+                        formatter={(value: any) => [`KES ${(Number(value) || 0).toLocaleString()}`, "Value"]}
+                        labelStyle={{ color: '#374151' }}
+                        contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
+                      />
+                      <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="flex h-full items-center justify-center text-sm text-neutral-500">No data available.</p>
+                )}
               </div>
             </div>
 
-            {/* Active Users Chart */}
+            {/* Active Users Chart (Frequency Polygon) */}
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Active Users</h2>
-              <div className="mt-4">
-                <TimelineChart data={data.active_users_over_time} valueKey="active_users" label="Users Active in Market" color="bg-[var(--accent)]" />
+              <p className="text-xs text-neutral-500 mb-4">Users Active in Market</p>
+              <div className="h-48">
+                {data.active_users_over_time.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={data.active_users_over_time.map((d) => ({
+                        ...d,
+                        periodStr: formatPeriod(d.period),
+                        active_users: Number(d.active_users) || 0,
+                      }))}
+                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                      <XAxis dataKey="periodStr" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                      <Tooltip 
+                        formatter={(value: any) => [value, "Users"]}
+                        labelStyle={{ color: '#374151' }}
+                        contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB' }}
+                      />
+                      <Area type="monotone" dataKey="active_users" stroke="#10B981" fillOpacity={1} fill="url(#colorUsers)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="flex h-full items-center justify-center text-sm text-neutral-500">No data available.</p>
+                )}
               </div>
             </div>
           </div>
@@ -247,6 +336,105 @@ export default function AdminDashboardPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Reports Export Section */}
+          <div className="space-y-6 pt-6">
+            <h2 className="text-2xl font-bold">Custom CSV Reports</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Users Export */}
+              <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-[var(--brand-strong)]">Users Database</h3>
+                <input 
+                  type="text" 
+                  placeholder="Query (username, logic, etc.)" 
+                  value={userQuery} 
+                  onChange={e => setUserQuery(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <input 
+                  type="date" 
+                  value={userDateJoined} 
+                  onChange={e => setUserDateJoined(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm text-neutral-600"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Location filter" 
+                  value={userLocation} 
+                  onChange={e => setUserLocation(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <div className="flex-1" />
+                <button 
+                  onClick={handleDownloadUsers}
+                  className="mt-2 w-full rounded-xl border border-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand-soft)]"
+                >
+                  Export Users CSV
+                </button>
+              </div>
+
+              {/* Listings Export */}
+              <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-[var(--brand-strong)]">Listings Database</h3>
+                <input 
+                  type="text" 
+                  placeholder="Farmer name query" 
+                  value={listingUserQuery} 
+                  onChange={e => setListingUserQuery(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Waste Type" 
+                  value={listingWasteType} 
+                  onChange={e => setListingWasteType(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Location filter" 
+                  value={listingLocation} 
+                  onChange={e => setListingLocation(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <div className="flex-1" />
+                <button 
+                  onClick={handleDownloadListings}
+                  className="mt-2 w-full rounded-xl border border-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand-soft)]"
+                >
+                  Export Listings CSV
+                </button>
+              </div>
+
+              {/* Orders Export */}
+              <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-[var(--brand-strong)]">Orders Database</h3>
+                <input 
+                  type="text" 
+                  placeholder="Farmer or processor name" 
+                  value={orderQuery} 
+                  onChange={e => setOrderQuery(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Location filter" 
+                  value={orderLocation} 
+                  onChange={e => setOrderLocation(e.target.value)} 
+                  className="w-full rounded-xl border p-2 text-sm"
+                />
+                <div className="flex-1" />
+                <button 
+                  onClick={handleDownloadOrders}
+                  className="mt-2 w-full rounded-xl border border-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand-soft)]"
+                >
+                  Export Orders CSV
+                </button>
+              </div>
+
+            </div>
           </div>
         </>
       )}
