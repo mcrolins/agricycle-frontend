@@ -95,9 +95,19 @@ export default function ListingsPage() {
       .then(async (data) => {
         if (!mounted) return;
         const listings = Array.isArray(data) ? data : [];
-        const acceptedQuantities = await Promise.all(listings.map((item) => loadListingAcceptedQuantity(item.id)));
-        if (!mounted) return;
-        setItems(listings.map((item, index) => toListingListViewItem(item, acceptedQuantities[index] || 0)));
+        // Backend provides remaining_quantity - no client-side calc needed
+        const processedItems = listings.map((item): ListingListViewItem => {
+          const qty = Number(item.quantity) || 0;
+          const remQty = item.remaining_quantity ?? qty; // Use backend or fallback
+          const effectiveStatus = isFulfilledStatus(item.status) && remQty > 0 ? "OPEN" : item.status;
+          return {
+            ...item,
+            effective_status: effectiveStatus,
+            remaining_quantity: remQty,
+            original_quantity: qty,
+          };
+        });
+        setItems(processedItems);
       })
       .catch((e: unknown) => mounted && setErr(e instanceof Error ? e.message : "Failed to load listings"))
       .finally(() => mounted && setLoading(false));

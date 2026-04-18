@@ -22,6 +22,17 @@ export default function LoginPage() {
       setCurrentUsername(username.trim());
       
       const role = getCurrentRole();
+      console.log('LOGIN DEBUG:', {
+        username: username.trim(),
+        extractedRole: role
+      });
+      
+      // Temp fix for known admin
+      if (username.trim() === 'AgricycleAdmin') {
+        localStorage.setItem('agricycle_role', 'ADMIN');
+        console.log('FORCE ADMIN ROLE for AgricycleAdmin');
+      }
+      
       if (role === "ADMIN") {
         router.replace("/admin");
       } else {
