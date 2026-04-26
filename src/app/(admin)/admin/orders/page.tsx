@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/app/lib/api";
+import AdminActionButton from "@/app/components/admin/AdminActionButton";
+import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
 
 type AdminOrder = {
   id: number;
@@ -76,15 +78,52 @@ export default function AdminOrdersPage() {
     return numeric.toLocaleString();
   }
 
+  function downloadOrders() {
+    const rows: Array<Array<string | number>> = [
+      ["Order ID", "Waste Type", "Quantity Requested", "Unit", "Processor", "Farmer", "Price Per Unit", "Estimated Total", "Status", "Created"],
+      ...orders.map((order) => {
+        const quantity = Number(order.quantity_requested);
+        const unitPrice = Number(order.proposed_price);
+        const estimatedTotal =
+          Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : "-";
+
+        return [
+          order.id,
+          order.listing_waste_type,
+          order.quantity_requested,
+          order.listing_unit || order.unit || "units",
+          order.processor_username,
+          order.listing_farmer_username,
+          order.proposed_price,
+          estimatedTotal,
+          order.status,
+          new Date(order.created_at).toLocaleDateString(),
+        ];
+      }),
+    ];
+
+    downloadCsv("admin-orders.csv", rows);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Administration</p>
-        <h1 className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">Manage Orders</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Administration</p>
+          <h1 className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">Manage Orders</h1>
+        </div>
+        <div className="flex flex-wrap gap-2 print:hidden">
+          <AdminActionButton onClick={downloadOrders} disabled={loading || orders.length === 0}>
+            Download CSV
+          </AdminActionButton>
+          <AdminActionButton onClick={printCurrentPage} variant="primary">
+            Print
+          </AdminActionButton>
+        </div>
       </div>
 
       {/* Filters Bar */}
-      <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4">
+      <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 print:hidden">
         <div className="flex-1 min-w-[150px]">
           <label className="mb-1 block text-xs font-semibold text-neutral-600">Processor (Buyer)</label>
           <input
