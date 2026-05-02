@@ -22,6 +22,10 @@ function badgeClass(status) {
       return "bg-red-100 text-red-700";
     case "PENDING":
       return "bg-amber-100 text-amber-800";
+    case "COMPLETED":
+      return "bg-blue-100 text-blue-700";
+    case "CANCELLED":
+      return "bg-neutral-200 text-neutral-600";
     default:
       return "bg-neutral-100 text-neutral-700";
   }
@@ -38,6 +42,13 @@ export default function RequestCard({ request, onStatusChange, actionLoading = f
   const numericQuantity = Number(quantity);
   const numericUnitPrice = Number(proposedPrice);
   const totalCost = Number.isFinite(numericQuantity) && Number.isFinite(numericUnitPrice) ? numericQuantity * numericUnitPrice : null;
+
+  // Remaining quantity context for farmer accept decisions
+  const listingQty = Number(request.listing_quantity);
+  const remainingQty = Number(request.remaining_quantity);
+  const totalBids = request.total_bids;
+  const hasRemainingContext = Number.isFinite(remainingQty) && remainingQty >= 0;
+  const canAccept = status === "PENDING" && (!hasRemainingContext || numericQuantity <= remainingQty);
 
   return (
     <article className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5 shadow-sm">
@@ -65,6 +76,30 @@ export default function RequestCard({ request, onStatusChange, actionLoading = f
         </div>
       </div>
 
+      {/* Remaining quantity and bid context for farmer */}
+      {hasRemainingContext && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {Number.isFinite(listingQty) && (
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Listed Qty</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{formatQty(listingQty)} {unit}</p>
+            </div>
+          )}
+          <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Remaining</p>
+            <p className={`mt-1 text-sm font-semibold ${remainingQty > 0 ? "text-emerald-700" : "text-red-600"}`}>
+              {formatQty(remainingQty)} {unit}
+            </p>
+          </div>
+          {totalBids != null && (
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Bids</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{totalBids}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {totalCost !== null && (
         <p className="mt-3 text-sm font-semibold text-neutral-800">
           Estimated total: KES {formatMoney(totalCost)}
@@ -72,6 +107,13 @@ export default function RequestCard({ request, onStatusChange, actionLoading = f
       )}
 
       {note && <p className="mt-4 text-sm leading-6 text-neutral-700">{note}</p>}
+
+      {/* Warning when requested qty exceeds remaining */}
+      {onStatusChange && status === "PENDING" && hasRemainingContext && numericQuantity > remainingQty && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          This request asks for more than the remaining quantity ({formatQty(remainingQty)} {unit}). It cannot be accepted.
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {showDetailsLink && (
@@ -83,7 +125,7 @@ export default function RequestCard({ request, onStatusChange, actionLoading = f
           </Link>
         )}
 
-        {onStatusChange && status === "PENDING" && (
+        {onStatusChange && canAccept && (
           <button
             type="button"
             onClick={() => onStatusChange(request.id, "ACCEPTED")}

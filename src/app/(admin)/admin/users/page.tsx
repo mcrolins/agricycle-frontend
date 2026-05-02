@@ -440,129 +440,196 @@ export default function AdminUsersPage() {
           </div>
 
           {selectedUser && (
-            <section className="rounded-2xl border border-[var(--line)] bg-white shadow-sm">
-              <div className="flex flex-col gap-4 border-b border-[var(--line)] px-5 py-5 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">User Details</p>
-                  <h2 className="mt-1 text-xl font-bold text-[var(--brand-strong)]">
-                    {getUserDisplayName(selectedUser)}
-                  </h2>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    @{selectedUser.username} · {selectedUser.role} ·{" "}
-                    {getUserLocation(selectedUser) || "Location not available"}
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:min-w-[280px]">
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Listings</p>
-                    <p className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">
-                      {selectedActivity?.listings.length ?? 0}
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm print:hidden"
+              onClick={() => setSelectedUserId(null)}
+            >
+              <div 
+                className="relative flex h-full max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-[var(--line)] bg-white shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="flex flex-col gap-4 border-b border-[var(--line)] px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Admin Dashboard · User Profile</p>
+                    <h2 className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">
+                      {getUserDisplayName(selectedUser)}
+                    </h2>
+                    <p className="mt-1 text-sm text-neutral-600">
+                      @{selectedUser.username} · {selectedUser.role} ·{" "}
+                      {getUserLocation(selectedUser) || "Location not available"}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">Orders</p>
-                    <p className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">
-                      {selectedActivity?.orders.length ?? 0}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6 px-5 py-5">
-                {activityLoading && (
-                  <p className="text-sm text-neutral-500">Loading listings and orders for this user...</p>
-                )}
-                {activityError && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    {activityError}
-                  </div>
-                )}
-
-                {!activityLoading && !activityError && selectedActivity && (
-                  <div className="grid gap-6 xl:grid-cols-2">
-                    <div className="overflow-hidden rounded-2xl border border-[var(--line)]">
-                      <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
-                        <h3 className="font-semibold text-[var(--brand-strong)]">Listings</h3>
+                  <div className="flex items-start gap-4">
+                    <div className="grid grid-cols-2 gap-3 sm:min-w-[240px]">
+                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500 text-center">Listings</p>
+                        <p className="mt-1 text-2xl font-bold text-[var(--brand-strong)] text-center">
+                          {selectedActivity?.listings.length ?? 0}
+                        </p>
                       </div>
-                      {selectedActivity.listings.length === 0 ? (
-                        <p className="px-4 py-6 text-sm text-neutral-500">This user has no listings.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                              <tr>
-                                <th className="px-4 py-3">Item</th>
-                                <th className="px-4 py-3">Location</th>
-                                <th className="px-4 py-3">Price</th>
-                                <th className="px-4 py-3">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[var(--line)]">
-                              {selectedActivity.listings.map((listing) => (
-                                <tr key={listing.id}>
-                                  <td className="px-4 py-3">
-                                    <p className="font-semibold text-neutral-900">{listing.waste_type}</p>
-                                    <p className="text-xs text-neutral-500">
-                                      {listing.quantity} {listing.unit} · {new Date(listing.created_at).toLocaleDateString()}
-                                    </p>
-                                  </td>
-                                  <td className="px-4 py-3 text-neutral-600">{listing.location}</td>
-                                  <td className="px-4 py-3 font-medium text-neutral-900">
-                                    {listing.price ? `KES ${listing.price}` : "-"}
-                                  </td>
-                                  <td className="px-4 py-3 text-neutral-600">{listing.status}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500 text-center">Orders</p>
+                        <p className="mt-1 text-2xl font-bold text-[var(--brand-strong)] text-center">
+                          {selectedActivity?.orders.length ?? 0}
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUserId(null)}
+                      className="rounded-full bg-neutral-100 p-2 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700 transition"
+                      aria-label="Close modal"
+                    >
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-[var(--line)]">
-                      <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
-                        <h3 className="font-semibold text-[var(--brand-strong)]">Orders</h3>
-                      </div>
-                      {selectedActivity.orders.length === 0 ? (
-                        <p className="px-4 py-6 text-sm text-neutral-500">This user has no related orders.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
-                              <tr>
-                                <th className="px-4 py-3">Order</th>
-                                <th className="px-4 py-3">Relation</th>
-                                <th className="px-4 py-3">Other User</th>
-                                <th className="px-4 py-3">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[var(--line)]">
-                              {selectedActivity.orders.map((order) => {
-                                const relationship = getOrderRelationship(order, selectedUser.username);
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
+                  {activityLoading && (
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--brand)] border-t-transparent mb-4"></div>
+                      <p className="text-sm text-neutral-500">Loading user activity and history...</p>
+                    </div>
+                  )}
+                  {activityError && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center">
+                      <p className="text-sm font-semibold text-red-700">{activityError}</p>
+                      <button onClick={() => window.location.reload()} className="mt-2 text-xs font-bold text-red-600 underline">Try again</button>
+                    </div>
+                  )}
 
-                                return (
-                                  <tr key={order.id}>
-                                    <td className="px-4 py-3">
-                                      <p className="font-semibold text-neutral-900">#{order.id} · {order.listing_waste_type}</p>
-                                      <p className="text-xs text-neutral-500">
-                                        {order.quantity_requested} {order.listing_unit || order.unit || "units"} · {new Date(order.created_at).toLocaleDateString()}
-                                      </p>
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-600">{relationship.label}</td>
-                                    <td className="px-4 py-3 text-neutral-600">@{relationship.otherUser}</td>
-                                    <td className="px-4 py-3 text-neutral-600">{order.status}</td>
+                  {!activityLoading && !activityError && selectedActivity && (
+                    <div className={selectedUser.role === "PROCESSOR" ? "space-y-6" : "grid gap-6 xl:grid-cols-2"}>
+                      {/* Listings Section (Hidden or simplified for processors if needed, but keeping for now unless empty) */}
+                      {selectedUser.role !== "PROCESSOR" && (
+                        <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm">
+                          <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
+                            <h3 className="font-semibold text-[var(--brand-strong)]">Listing History</h3>
+                          </div>
+                          {selectedActivity.listings.length === 0 ? (
+                            <div className="py-12 text-center">
+                              <p className="text-sm text-neutral-400 font-medium">This user has no listing history.</p>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-sm">
+                                <thead className="bg-neutral-50/50 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                                  <tr>
+                                    <th className="px-4 py-3">Waste Item</th>
+                                    <th className="px-4 py-3">Location</th>
+                                    <th className="px-4 py-3">Price</th>
+                                    <th className="px-4 py-3">Status</th>
                                   </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--line)]">
+                                  {selectedActivity.listings.map((listing) => (
+                                    <tr key={listing.id} className="hover:bg-neutral-50/50 transition">
+                                      <td className="px-4 py-4">
+                                        <p className="font-bold text-neutral-900">{listing.waste_type}</p>
+                                        <p className="text-[11px] text-neutral-500 font-medium mt-0.5">
+                                          {listing.quantity} {listing.unit} · {new Date(listing.created_at).toLocaleDateString()}
+                                        </p>
+                                      </td>
+                                      <td className="px-4 py-4 text-neutral-600 text-xs font-medium">{listing.location}</td>
+                                      <td className="px-4 py-4 font-bold text-neutral-900">
+                                        {listing.price ? `KES ${listing.price}` : "-"}
+                                      </td>
+                                      <td className="px-4 py-4">
+                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                          listing.status === "OPEN" ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-600"
+                                        }`}>
+                                          {listing.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
                         </div>
                       )}
+
+                      {/* Orders Section */}
+                      <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm">
+                        <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 flex justify-between items-center">
+                          <h3 className="font-semibold text-[var(--brand-strong)]">
+                            {selectedUser.role === "PROCESSOR" ? "Order Activity" : "Order History"}
+                          </h3>
+                          {selectedUser.role === "PROCESSOR" && (
+                            <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Minimal View</span>
+                          )}
+                        </div>
+                        {selectedActivity.orders.length === 0 ? (
+                          <div className="py-12 text-center">
+                            <p className="text-sm text-neutral-400 font-medium">This user has no order activity.</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                              <thead className="bg-neutral-50/50 text-xs font-semibold uppercase tracking-wider text-neutral-500">
+                                <tr>
+                                  <th className="px-4 py-3 text-center">Order ID</th>
+                                  <th className="px-4 py-3">Waste Category</th>
+                                  <th className="px-4 py-3">Relation</th>
+                                  {selectedUser.role !== "PROCESSOR" && <th className="px-4 py-3">Counterparty</th>}
+                                  <th className="px-4 py-3">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[var(--line)]">
+                                {selectedActivity.orders.map((order) => {
+                                  const relationship = getOrderRelationship(order, selectedUser.username);
+
+                                  return (
+                                    <tr key={order.id} className="hover:bg-neutral-50/50 transition">
+                                      <td className="px-4 py-4 text-center font-mono text-xs font-bold text-neutral-400">
+                                        #{order.id}
+                                      </td>
+                                      <td className="px-4 py-4">
+                                        <p className="font-bold text-neutral-900">{order.listing_waste_type}</p>
+                                        <p className="text-[11px] text-neutral-500 font-medium mt-0.5">
+                                          {order.quantity_requested} {order.listing_unit || order.unit || "units"} · {new Date(order.created_at).toLocaleDateString()}
+                                        </p>
+                                      </td>
+                                      <td className="px-4 py-4">
+                                        <span className={`inline-flex rounded-lg px-2 py-1 text-[11px] font-bold ${
+                                          relationship.label.includes("Placed") ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"
+                                        }`}>
+                                          {relationship.label}
+                                        </span>
+                                      </td>
+                                      {selectedUser.role !== "PROCESSOR" && (
+                                        <td className="px-4 py-4 text-neutral-600 font-medium text-xs">
+                                          @{relationship.otherUser}
+                                        </td>
+                                      )}
+                                      <td className="px-4 py-4">
+                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                          order.status === "PENDING" ? "bg-amber-100 text-amber-700" : 
+                                          order.status === "ACCEPTED" ? "bg-green-100 text-green-700" :
+                                          "bg-neutral-100 text-neutral-600"
+                                        }`}>
+                                          {order.status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </section>
+            </div>
           )}
         </>
       )}

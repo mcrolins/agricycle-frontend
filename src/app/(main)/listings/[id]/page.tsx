@@ -35,6 +35,8 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     quantity_requested: false,
     proposed_price: false,
   });
+  const [farmerProfile, setFarmerProfile] = useState<any | null>(null);
+  const [showFarmerModal, setShowFarmerModal] = useState(false);
 
   const { accessToken, role: currentRole, username: currentUsername } = useAuthState();
   const isOwner = !!currentUsername && currentUsername === data?.farmer_username;
@@ -59,6 +61,14 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
       message: current.message,
     }));
   }, [data]);
+
+  useEffect(() => {
+    if (data?.farmer) {
+      apiFetch(`/api/accounts/farmer/${data.farmer}/`, { method: "GET" }, { auth: false })
+        .then(setFarmerProfile)
+        .catch(console.error);
+    }
+  }, [data?.farmer]);
 
   useEffect(() => {
     let mounted = true;
@@ -236,10 +246,15 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const acceptedQuantity = bids
     .filter((bid) => (bid.status || "").toUpperCase() === "ACCEPTED")
     .reduce((sum, bid) => sum + (Number(bid.quantity_requested ?? bid.quantity) || 0), 0);
-  const remainingQuantity = Number.isFinite(listingQuantity) ? Math.max(listingQuantity - acceptedQuantity, 0) : 0;
+  const backendRemaining = data.remaining_quantity != null ? Number(data.remaining_quantity) : null;
+  const remainingQuantity = backendRemaining != null && Number.isFinite(backendRemaining)
+    ? backendRemaining
+    : (Number.isFinite(listingQuantity) ? Math.max(listingQuantity - acceptedQuantity, 0) : 0);
   const availableQuantity = remainingQuantity > 0 ? remainingQuantity : listingQuantity;
-  const isListingOpen = data.status === "OPEN";
+  const isListingOpen = ["OPEN", "REQUESTED"].includes(data.status);
   const canStillRequestQuantity = availableQuantity > 0;
+  const isProcessor = currentRole === "PROCESSOR";
+  const bidSummary = data.bid_summary;
   const hasRequestQuantity = requestForm.quantity_requested.trim().length > 0;
   const hasRequestPrice = requestForm.proposed_price.trim().length > 0;
   const hasRequestMessage = requestForm.message.trim().length > 0;
@@ -486,14 +501,74 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         <p className="mt-1 text-sm text-neutral-700">{data.notes || "—"}</p>
       </div>
 
+      {isProcessor && bidSummary && bidSummary.total_bids > 0 && (
+        <div className="rounded-2xl border bg-white p-4">
+          <h2 className="text-lg font-semibold">Competitive Bids</h2>
+          <p className="mt-1 text-sm text-neutral-600">Other processors have also placed bids on this listing. Place a competitive offer to increase your chances.</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Bids</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{bidSummary.total_bids}</p>
+            </div>
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pending / Accepted</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{bidSummary.pending_bids} / {bidSummary.accepted_bids}</p>
+            </div>
+            {bidSummary.price_range && (
+              <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Price Range</p>
+                <p className="mt-1 text-sm font-semibold text-neutral-900">KES {Number(bidSummary.price_range.min).toLocaleString()} – {Number(bidSummary.price_range.max).toLocaleString()}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {farmerProfile && (
+        <div className="rounded-2xl border bg-white p-4">
+          <h2 className="text-lg font-semibold">About Farmer</h2>
+          <div className="mt-2 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-200 font-bold text-neutral-600">
+              {data.farmer_username[0].toUpperCase()}
+            </div>
+            <div>
+              <p className="font-semibold">@{data.farmer_username}</p>
+              <p className="text-xs text-neutral-500">
+                {farmerProfile.average_rating ? `★ ${Number(farmerProfile.average_rating).toFixed(1)} Rating` : "No ratings yet"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Listings</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.total_listings}</p>
+            </div>
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Accepted Listings</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.accepted_listings || 0}</p>
+            </div>
+            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Reviews</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.reviews?.length || 0}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFarmerModal(true)}
+            className="mt-4 w-full rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50 transition"
+          >
+            View Full Profile & Reviews
+          </button>
+        </div>
+      )}
+
       <div className="rounded-2xl border bg-white p-4">
         <h2 className="text-lg font-semibold">Request This Listing</h2>
         <p className="mt-2 text-sm text-neutral-600">
           {isListingOpen && canStillRequestQuantity
             ? "Processors can send a request with quantity, price, and pickup notes."
-            : isListingOpen
-            ? "This listing has no quantity left to allocate."
-            : `This listing is currently ${data.status.toLowerCase()} and cannot accept new requests.`}
+            : canStillRequestQuantity
+            ? "This listing still has available quantity. Place a competitive offer."
+            : "This listing has no quantity left to allocate."}
         </p>
         {!accessToken && (
           <p className="mt-2 text-sm text-neutral-600">
@@ -730,6 +805,70 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
       {currentRole === "FARMER" && !isOwnerFarmer && (
         <p className="text-sm text-neutral-600">This listing belongs to another farmer. You cannot edit or manage it.</p>
+      )}
+
+      {showFarmerModal && farmerProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <button
+              onClick={() => setShowFarmerModal(false)}
+              className="absolute right-4 top-4 rounded-full bg-neutral-100 p-2 text-neutral-600 hover:bg-neutral-200"
+            >
+              ✕
+            </button>
+            <h2 className="text-xl font-bold">Farmer Profile: @{data.farmer_username}</h2>
+            
+            <div className="mt-6">
+              <h3 className="font-semibold text-neutral-900">Recent Listings</h3>
+              {farmerProfile.listings && farmerProfile.listings.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {farmerProfile.listings.map((l: any) => (
+                    <div key={l.id} className="rounded-xl border p-3 text-sm">
+                      <span className="font-semibold">{l.waste_type}</span> - {l.quantity} {l.unit}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-500 mt-1">No listings.</p>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <h3 className="font-semibold text-neutral-900">Reviews & Ratings</h3>
+              {farmerProfile.reviews && farmerProfile.reviews.length > 0 ? (
+                <div className="mt-2 space-y-3">
+                  {farmerProfile.reviews.map((r: any) => (
+                    <div key={r.id} className="rounded-xl bg-neutral-50 p-3 text-sm">
+                      <div className="flex justify-between font-semibold">
+                        <span>{r.reviewer_name || 'Anonymous'}</span>
+                        <span className="text-amber-500">★ {r.rating}</span>
+                      </div>
+                      {r.comment && <p className="mt-1 text-neutral-700">{r.comment}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-500 mt-1">No reviews yet.</p>
+              )}
+            </div>
+
+            <div className="mt-6">
+              <h3 className="font-semibold text-neutral-900">Public Complaints</h3>
+              {farmerProfile.complaints && farmerProfile.complaints.length > 0 ? (
+                <div className="mt-2 space-y-3">
+                  {farmerProfile.complaints.map((c: any) => (
+                    <div key={c.id} className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
+                      <p className="font-semibold">{c.reporter_name || 'Anonymous'}</p>
+                      <p className="mt-1">{c.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-500 mt-1">No complaints reported.</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

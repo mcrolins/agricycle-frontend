@@ -19,6 +19,7 @@ export type WasteListingListItem = {
   farmer_username: string;
   primary_image: ListingImage | null;
   remaining_quantity?: number;
+  request_count?: number;
 };
 
 export interface DashboardData {
@@ -42,6 +43,14 @@ export interface DashboardData {
   granularity: string;
 }
 
+export type BidSummary = {
+  total_bids: number;
+  pending_bids: number;
+  accepted_bids: number;
+  price_range: { min: string | number; max: string | number } | null;
+  quantity_range: { min: string | number; max: string | number } | null;
+};
+
 export type WasteListingDetail = {
   id: number;
   farmer_username: string;
@@ -54,6 +63,9 @@ export type WasteListingDetail = {
   status: string;
   created_at: string;
   images: ListingImage[];
+  remaining_quantity?: number | string;
+  request_count?: number;
+  bid_summary?: BidSummary;
 };
 
 export type ListingBid = {
@@ -69,4 +81,8 @@ export type ListingBid = {
   notes?: string;
   status?: string;
   created_at?: string;
+  listing_quantity?: string | number | null;
+  listing_unit?: string;
+  remaining_quantity?: string | number | null;
+  total_bids?: number;
 };

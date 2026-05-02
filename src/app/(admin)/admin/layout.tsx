@@ -11,6 +11,7 @@ const navItems = [
   { href: "/admin/users", label: "Users", icon: "👥" },
   { href: "/admin/listings", label: "Listings", icon: "🌾" },
   { href: "/admin/orders", label: "Orders", icon: "📦" },
+  { href: "/admin/complaints", label: "Complaints", icon: "⚠️" },
 ];
 
 function SidebarLink({ href, label, icon }: { href: string; label: string; icon: string }) {

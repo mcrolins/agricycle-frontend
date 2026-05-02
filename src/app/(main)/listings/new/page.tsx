@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { kenyaLocationListId, kenyaLocationSuggestions } from "@/app/lib/kenyaLocations";
+import Tooltip from "@/app/components/Tooltip";
 
 type CreateListingPayload = {
   waste_type: string;
@@ -136,8 +137,15 @@ export default function NewListingPage() {
       {err && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>}
 
       <form onSubmit={onSubmit} className="space-y-3 rounded-2xl border bg-white p-4">
-        <input required className="w-full rounded-xl border px-3 py-3 text-sm" placeholder="Waste type"
-          value={form.waste_type} onChange={(e) => update("waste_type", e.target.value)} />
+        <div className="flex gap-2 items-center w-full relative">
+          <input required className="w-full rounded-xl border px-3 py-3 text-sm" placeholder="Waste category / type"
+            value={form.waste_type} onChange={(e) => update("waste_type", e.target.value)} />
+          <Tooltip text="What is waste category? Examples: Crop residue, animal waste, processing by-products. Be specific (e.g., Maize stalks, cow dung).">
+            <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200" aria-label="What is waste category?">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </button>
+          </Tooltip>
+        </div>
 
         <div className="flex gap-2">
           <div className="w-full">

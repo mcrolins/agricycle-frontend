@@ -149,15 +149,24 @@ function TimelineChart({
   label,
   unit = "",
   color = "bg-[var(--brand)]",
+  granularity = "month",
 }: {
   data: TimelineEntry[];
   valueKey: string;
   label: string;
   unit?: string;
   color?: string;
+  granularity?: string;
 }) {
   if (!data.length) return <p className="py-4 text-center text-sm text-neutral-500">No data for this period.</p>;
   const maxVal = Math.max(...data.map((d) => Number((d as Record<string, unknown>)[valueKey]) || 0), 1);
+
+  // Show up to 6 evenly-spaced axis labels
+  const maxLabels = Math.min(data.length, 6);
+  const step = Math.max(1, Math.floor(data.length / maxLabels));
+  const labelIndices = new Set<number>();
+  for (let i = 0; i < data.length; i += step) labelIndices.add(i);
+  labelIndices.add(data.length - 1);
 
   return (
     <div className="space-y-1.5">
@@ -176,24 +185,34 @@ function TimelineChart({
                 {val.toLocaleString()}
                 {unit}
                 <br />
-                {formatPeriod(entry.period)}
+                {formatPeriod(entry.period, granularity)}
               </div>
             </div>
           );
         })}
       </div>
       <div className="flex justify-between text-[10px] text-neutral-400">
-        <span>{formatPeriod(data[0].period)}</span>
-        {data.length > 1 && <span>{formatPeriod(data[data.length - 1].period)}</span>}
+        {data.map((entry, i) =>
+          labelIndices.has(i) ? (
+            <span key={`label-${entry.period}-${i}`} className="text-center" style={{ flex: 1 }}>
+              {formatPeriod(entry.period, granularity)}
+            </span>
+          ) : (
+            <span key={`spacer-${i}`} style={{ flex: 1 }} />
+          )
+        )}
       </div>
     </div>
   );
 }
 
-function formatPeriod(dateStr: string) {
+function formatPeriod(dateStr: string, granularity: string = "month") {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
+    if (granularity === "day") {
+      return d.toLocaleDateString("en-KE", { day: "numeric", month: "short" });
+    }
     return d.toLocaleDateString("en-KE", { month: "short", year: "2-digit" });
   } catch {
     return dateStr;
@@ -210,7 +229,7 @@ function formatQty(val: number | string) {
   return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-function isSoldListing(status: string) {
+function isAcceptedListing(status: string) {
   return ["ACCEPTED", "COMPLETED"].includes((status || "").toUpperCase());
 }
 
@@ -249,8 +268,8 @@ function FarmerReports({
 
   const filteredListings = useMemo(() => {
     return listings.filter((item) => {
-      if (listingView === "sold" && !isSoldListing(item.status)) return false;
-      if (listingView === "unsold" && isSoldListing(item.status)) return false;
+      if (listingView === "sold" && !isAcceptedListing(item.status)) return false;
+      if (listingView === "unsold" && isAcceptedListing(item.status)) return false;
       if (wasteTypeFilter && item.waste_type !== wasteTypeFilter) return false;
       if (!matchesDateRange(item.created_at, startDate, endDate)) return false;
       return true;
@@ -262,7 +281,7 @@ function FarmerReports({
       ["Farmer Report"],
       ["Granularity", granularity],
       ["Total Listings", listingStats.total],
-      ["Sold Listings", listingStats.sold],
+      ["Accepted Listings", listingStats.sold],
       ["Unsold Listings", listingStats.unsold],
       ["Total Revenue", Number(revenue.total_revenue) || 0],
       [""],
@@ -315,7 +334,7 @@ function FarmerReports({
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Total Listings" value={listingStats.total} sub="Open the full listing register" active={listingView === "all"} onClick={() => setListingView("all")} />
-        <StatCard label="Sold Listings" value={listingStats.sold} sub="Filter to sold listings" active={listingView === "sold"} onClick={() => setListingView("sold")} />
+        <StatCard label="Accepted Listings" value={listingStats.sold} sub="Filter to accepted listings" active={listingView === "sold"} onClick={() => setListingView("sold")} />
         <StatCard label="Unsold Listings" value={listingStats.unsold} sub="Filter to unsold listings" active={listingView === "unsold"} onClick={() => setListingView("unsold")} />
         <StatCard label="Total Revenue" value={formatMoney(revenue.total_revenue)} sub={`${revenue.total_sales} sale${revenue.total_sales === 1 ? "" : "s"}`} />
       </div>
@@ -329,7 +348,7 @@ function FarmerReports({
             </p>
           </div>
           <div className="text-right text-xs text-neutral-500">
-            {listingStats.sold} of {listingStats.total} listings sold
+            {listingStats.sold} of {listingStats.total} listings accepted
           </div>
         </div>
         <div className="mt-3">
@@ -422,14 +441,14 @@ function FarmerReports({
       <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Revenue Over Time</h2>
         <div className="mt-4">
-          <TimelineChart data={revenue.timeline} valueKey="amount" label="Revenue (KES)" unit=" KES" />
+          <TimelineChart data={revenue.timeline} valueKey="amount" label="Revenue (KES)" unit=" KES" granularity={granularity} />
         </div>
       </div>
 
       <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Waste Listed Over Time</h2>
         <div className="mt-4">
-          <TimelineChart data={data.total_waste_listed_over_time} valueKey="quantity" label="Quantity Listed" color="bg-[var(--accent)]" />
+          <TimelineChart data={data.total_waste_listed_over_time} valueKey="quantity" label="Quantity Listed" color="bg-[var(--accent)]" granularity={granularity} />
         </div>
       </div>
 
@@ -526,14 +545,14 @@ function ProcessorReports({
       <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Spending Over Time</h2>
         <div className="mt-4">
-          <TimelineChart data={spending.timeline} valueKey="amount" label="Spending (KES)" unit=" KES" />
+          <TimelineChart data={spending.timeline} valueKey="amount" label="Spending (KES)" unit=" KES" granularity={granularity} />
         </div>
       </div>
 
       <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Purchases Over Time</h2>
         <div className="mt-4">
-          <TimelineChart data={purchases.timeline} valueKey="quantity" label="Quantity Purchased" color="bg-[var(--accent)]" />
+          <TimelineChart data={purchases.timeline} valueKey="quantity" label="Quantity Purchased" color="bg-[var(--accent)]" granularity={granularity} />
         </div>
       </div>
 
@@ -541,7 +560,7 @@ function ProcessorReports({
         <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Market Availability Trends</h2>
         <p className="mt-1 text-sm text-neutral-600">Total waste listings on the platform over time.</p>
         <div className="mt-4">
-          <TimelineChart data={availability.timeline} valueKey="quantity" label="Quantity Available" color="bg-emerald-500" />
+          <TimelineChart data={availability.timeline} valueKey="quantity" label="Quantity Available" color="bg-emerald-500" granularity={granularity} />
         </div>
       </div>
 

@@ -52,6 +52,7 @@ export default function BottomNav() {
         {isAdmin && <Item href="/admin" label="Admin" />}
         {primaryHref ? <Item href={primaryHref} label={primaryLabel} badgeCount={notificationCount} /> : <Item href="/listings" label={browseLabel} />}
         {(isFarmer || isProcessor) && <Item href="/reports" label="Reports" />}
+        <Item href="/help" label="Help" />
         {accessToken ? (
           <button
             type="button"

@@ -37,10 +37,13 @@ type AdminReport = {
   };
 };
 
-function formatPeriod(dateStr: string) {
+function formatPeriod(dateStr: string, granularity: string = "month") {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
+    if (granularity === "day") {
+      return d.toLocaleDateString("en-KE", { day: "numeric", month: "short" });
+    }
     return d.toLocaleDateString("en-KE", { month: "short", year: "2-digit" });
   } catch {
     return dateStr;
@@ -258,7 +261,7 @@ export default function AdminDashboardPage() {
                     <BarChart
                       data={data.total_platform_transactions.timeline.map((d) => ({
                         ...d,
-                        periodStr: formatPeriod(d.period),
+                        periodStr: formatPeriod(d.period, granularity),
                         amount: Number(d.amount) || 0,
                       }))}
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
@@ -290,7 +293,7 @@ export default function AdminDashboardPage() {
                     <AreaChart
                       data={data.active_users_over_time.map((d) => ({
                         ...d,
-                        periodStr: formatPeriod(d.period),
+                        periodStr: formatPeriod(d.period, granularity),
                         active_users: Number(d.active_users) || 0,
                       }))}
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}

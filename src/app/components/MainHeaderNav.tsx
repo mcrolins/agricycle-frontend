@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { clearTokens } from "@/app/lib/auth";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { useRequestNotifications } from "@/app/lib/useRequestNotifications";
 
 function NavLink({ href, label, badgeCount = 0 }: { href: string; label: string; badgeCount?: number }) {
+  const pathname = usePathname();
+  const isActive = pathname === href || pathname.startsWith(href + "/");
+
   return (
-    <Link href={href} className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm">
+    <Link href={href} className={`rounded-full border px-4 py-2 text-sm transition-colors ${isActive ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-[var(--line)] bg-white text-neutral-900"}`}>
       <span className="inline-flex items-center gap-2">
         <span>{label}</span>
         {badgeCount > 0 && (
@@ -41,6 +44,7 @@ export default function MainHeaderNav() {
       <NavLink href="/listings" label="Listings" />
       {primaryHref && primaryLabel && <NavLink href={primaryHref} label={primaryLabel} badgeCount={notificationCount} />}
       {(isFarmer || isProcessor) && <NavLink href="/reports" label="Reports" />}
+      <NavLink href="/help" label="Help" />
       {isAdmin && (
         <Link href="/admin" className="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">
           Admin Panel
