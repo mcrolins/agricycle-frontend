@@ -7,6 +7,35 @@ import type { ListingBid, WasteListingDetail } from "@/app/lib/types";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { createRequest } from "@/app/lib/orders";
+import ConfirmationModal from "@/app/components/ConfirmationModal";
+
+type PendingConfirmation =
+  | { type: "listing" }
+  | { type: "image"; imageId: number }
+  | null;
+
+type FarmerProfile = {
+  average_rating?: string | number | null;
+  total_listings?: number;
+  accepted_listings?: number;
+  listings?: Array<{
+    id: number;
+    waste_type: string;
+    quantity: string | number;
+    unit: string;
+  }>;
+  reviews?: Array<{
+    id: number;
+    reviewer_name?: string | null;
+    rating: string | number;
+    comment?: string | null;
+  }>;
+  complaints?: Array<{
+    id: number;
+    reporter_name?: string | null;
+    description: string;
+  }>;
+};
 
 export default function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,6 +52,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
   const [imageActionErr, setImageActionErr] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
   const [requestForm, setRequestForm] = useState({
     quantity_requested: "",
     proposed_price: data?.price ? String(data.price) : "",
@@ -31,11 +61,12 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestErr, setRequestErr] = useState<string | null>(null);
   const [requestSuccessId, setRequestSuccessId] = useState<number | null>(null);
+  const [showRequestSuccessDialog, setShowRequestSuccessDialog] = useState(false);
   const [requestTouched, setRequestTouched] = useState({
     quantity_requested: false,
     proposed_price: false,
   });
-  const [farmerProfile, setFarmerProfile] = useState<any | null>(null);
+  const [farmerProfile, setFarmerProfile] = useState<FarmerProfile | null>(null);
   const [showFarmerModal, setShowFarmerModal] = useState(false);
 
   const { accessToken, role: currentRole, username: currentUsername } = useAuthState();
@@ -64,7 +95,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     if (data?.farmer) {
-      apiFetch(`/api/accounts/farmer/${data.farmer}/`, { method: "GET" }, { auth: false })
+      apiFetch<FarmerProfile>(`/api/accounts/farmer/${data.farmer}/`, { method: "GET" }, { auth: false })
         .then(setFarmerProfile)
         .catch(console.error);
     }
@@ -114,8 +145,6 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
   async function deleteListing() {
     if (!isOwnerFarmer) return;
-    const ok = window.confirm("Delete this listing? This action cannot be undone.");
-    if (!ok) return;
 
     setDeleteErr(null);
     setDeleteLoading(true);
@@ -137,6 +166,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         }
       }
       if (!deleted) throw lastErr ?? new Error("Delete endpoint not found.");
+      setPendingConfirmation(null);
       router.push("/listings");
     } catch (e: unknown) {
       setDeleteErr(e instanceof Error ? e.message : "Failed to delete listing");
@@ -188,8 +218,6 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
 
   async function deleteImage(imageId: number) {
     if (!isOwnerFarmer) return;
-    const ok = window.confirm("Delete this image?");
-    if (!ok) return;
 
     setImageActionErr(null);
     setDeletingImageId(imageId);
@@ -217,6 +245,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         }
       }
       if (!deleted) throw lastErr ?? new Error("Delete image endpoint not found.");
+      setPendingConfirmation(null);
 
       setData((prev) => {
         if (!prev) return prev;
@@ -296,6 +325,17 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     setRequestForm((current) => ({ ...current, [key]: value }));
   }
 
+  function confirmPendingAction() {
+    if (pendingConfirmation?.type === "listing") {
+      void deleteListing();
+      return;
+    }
+
+    if (pendingConfirmation?.type === "image") {
+      void deleteImage(pendingConfirmation.imageId);
+    }
+  }
+
   async function submitRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canRequest || !data) return;
@@ -326,6 +366,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
         typeof created === "object" && created && "id" in created && typeof created.id === "number" ? created.id : null;
 
       setRequestSuccessId(createdId);
+      setShowRequestSuccessDialog(true);
       setRequestForm({
         quantity_requested: "",
         proposed_price: data.price ? String(data.price) : "",
@@ -415,7 +456,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
                   {isOwnerFarmer && (
                     <button
                       type="button"
-                      onClick={() => deleteImage(img.id)}
+                      onClick={() => setPendingConfirmation({ type: "image", imageId: img.id })}
                       disabled={deletingImageId === img.id}
                       className="absolute -right-2 -top-2 rounded-full bg-red-600 p-1.5 text-white shadow disabled:opacity-60"
                       aria-label="Delete image"
@@ -541,7 +582,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
           <div className="mt-4 grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Listings</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.total_listings}</p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.total_listings ?? 0}</p>
             </div>
             <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Accepted Listings</p>
@@ -751,7 +792,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
             </Link>
             <button
               type="button"
-              onClick={deleteListing}
+              onClick={() => setPendingConfirmation({ type: "listing" })}
               disabled={deleteLoading}
               className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
@@ -822,7 +863,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               <h3 className="font-semibold text-neutral-900">Recent Listings</h3>
               {farmerProfile.listings && farmerProfile.listings.length > 0 ? (
                 <div className="mt-2 space-y-2">
-                  {farmerProfile.listings.map((l: any) => (
+                  {farmerProfile.listings.map((l) => (
                     <div key={l.id} className="rounded-xl border p-3 text-sm">
                       <span className="font-semibold">{l.waste_type}</span> - {l.quantity} {l.unit}
                     </div>
@@ -837,7 +878,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               <h3 className="font-semibold text-neutral-900">Reviews & Ratings</h3>
               {farmerProfile.reviews && farmerProfile.reviews.length > 0 ? (
                 <div className="mt-2 space-y-3">
-                  {farmerProfile.reviews.map((r: any) => (
+                  {farmerProfile.reviews.map((r) => (
                     <div key={r.id} className="rounded-xl bg-neutral-50 p-3 text-sm">
                       <div className="flex justify-between font-semibold">
                         <span>{r.reviewer_name || 'Anonymous'}</span>
@@ -856,7 +897,7 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
               <h3 className="font-semibold text-neutral-900">Public Complaints</h3>
               {farmerProfile.complaints && farmerProfile.complaints.length > 0 ? (
                 <div className="mt-2 space-y-3">
-                  {farmerProfile.complaints.map((c: any) => (
+                  {farmerProfile.complaints.map((c) => (
                     <div key={c.id} className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
                       <p className="font-semibold">{c.reporter_name || 'Anonymous'}</p>
                       <p className="mt-1">{c.description}</p>
@@ -870,6 +911,35 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       )}
+
+      <ConfirmationModal
+        open={!!pendingConfirmation}
+        title={pendingConfirmation?.type === "image" ? "Delete image?" : "Delete listing?"}
+        message={
+          pendingConfirmation?.type === "image"
+            ? "This image will be removed from the listing. This action cannot be undone."
+            : "This listing and its details will be permanently deleted. This action cannot be undone."
+        }
+        confirmLabel={pendingConfirmation?.type === "image" ? "Delete Image" : "Delete Listing"}
+        variant="danger"
+        loading={deleteLoading || deletingImageId != null}
+        onConfirm={confirmPendingAction}
+        onCancel={() => {
+          if (!deleteLoading && deletingImageId == null) setPendingConfirmation(null);
+        }}
+      />
+      <ConfirmationModal
+        open={showRequestSuccessDialog}
+        title="Request sent"
+        message="Your request was submitted successfully. You can review it from your orders page."
+        confirmLabel={requestSuccessId ? "Open Request" : "View My Requests"}
+        variant="success"
+        showCancel={false}
+        autoCloseMs={3000}
+        onConfirm={() => router.push(requestSuccessId ? `/orders/${requestSuccessId}` : "/orders/my")}
+        onAutoClose={() => setShowRequestSuccessDialog(false)}
+        onCancel={() => setShowRequestSuccessDialog(false)}
+      />
     </div>
   );
 }

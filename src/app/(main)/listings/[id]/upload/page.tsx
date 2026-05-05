@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { WasteListingDetail } from "@/app/lib/types";
 import { useEffect } from "react";
 import { useAuthState } from "@/app/lib/useAuthState";
+import ConfirmationModal from "@/app/components/ConfirmationModal";
 
 export default function UploadListingImagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -18,6 +19,7 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
   const isOwnerFarmer = role === "FARMER" && !!username && ownerUsername === username;
   const [err, setErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadSucceeded, setUploadSucceeded] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -49,7 +51,7 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
         body: fd,
       });
 
-      router.push(`/listings/${id}`);
+      setUploadSucceeded(true);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -93,6 +95,18 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
       {err && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>}
       <ImagePicker onPick={upload} />
       {uploading && <p className="text-sm text-neutral-500">Uploading...</p>}
+      <ConfirmationModal
+        open={uploadSucceeded}
+        title="Image uploaded"
+        message="Your image was uploaded successfully and added to the listing."
+        confirmLabel="View Listing"
+        variant="success"
+        showCancel={false}
+        autoCloseMs={3000}
+        onConfirm={() => router.push(`/listings/${id}`)}
+        onAutoClose={() => router.push(`/listings/${id}`)}
+        onCancel={() => router.push(`/listings/${id}`)}
+      />
     </div>
   );
 }

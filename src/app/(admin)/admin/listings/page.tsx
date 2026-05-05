@@ -17,6 +17,13 @@ type WasteListing = {
   farmer_username: string;
 };
 
+function matchesDateRange(value: string, startDate: string, endDate: string) {
+  const date = (value || "").slice(0, 10);
+  if (startDate && date < startDate) return false;
+  if (endDate && date > endDate) return false;
+  return true;
+}
+
 function statusBadgeClass(status: string) {
   switch ((status || "").toUpperCase()) {
     case "OPEN": return "bg-emerald-100 text-emerald-800";
@@ -37,6 +44,7 @@ export default function AdminListingsPage() {
 
   // Filters
   const [nameFilter, setNameFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [wasteTypeFilter, setWasteTypeFilter] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -48,6 +56,7 @@ export default function AdminListingsPage() {
       const q = new URLSearchParams();
       if (statusFilter) q.set("status", statusFilter);
       if (wasteTypeFilter) q.set("waste_type", wasteTypeFilter);
+      if (locationFilter) q.set("location", locationFilter);
       if (startDate) q.set("start_date", startDate);
       if (endDate) q.set("end_date", endDate);
 
@@ -75,15 +84,38 @@ export default function AdminListingsPage() {
 
   const filteredListings = useMemo(() => {
     const normalizedNameFilter = nameFilter.trim().toLowerCase();
-    if (!normalizedNameFilter) return listings;
+    const normalizedLocationFilter = locationFilter.trim().toLowerCase();
+    const normalizedWasteTypeFilter = wasteTypeFilter.trim().toLowerCase();
+    const normalizedStatusFilter = statusFilter.trim().toUpperCase();
 
-    return listings.filter((listing) =>
-      [listing.farmer_username, listing.waste_type]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedNameFilter)
-    );
-  }, [listings, nameFilter]);
+    return listings.filter((listing) => {
+      const matchesName =
+        !normalizedNameFilter ||
+        [listing.farmer_username, listing.waste_type]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedNameFilter);
+
+      const matchesLocation =
+        !normalizedLocationFilter ||
+        (listing.location || "").toLowerCase().includes(normalizedLocationFilter);
+
+      const matchesWasteType =
+        !normalizedWasteTypeFilter ||
+        (listing.waste_type || "").toLowerCase().includes(normalizedWasteTypeFilter);
+
+      const matchesStatus =
+        !normalizedStatusFilter || (listing.status || "").toUpperCase() === normalizedStatusFilter;
+
+      return (
+        matchesName &&
+        matchesLocation &&
+        matchesWasteType &&
+        matchesStatus &&
+        matchesDateRange(listing.created_at, startDate, endDate)
+      );
+    });
+  }, [endDate, listings, locationFilter, nameFilter, startDate, statusFilter, wasteTypeFilter]);
 
   function downloadListings() {
     const rows: Array<Array<string | number>> = [
@@ -140,6 +172,16 @@ export default function AdminListingsPage() {
             placeholder="e.g. husks"
             value={wasteTypeFilter}
             onChange={(e) => setWasteTypeFilter(e.target.value)}
+            className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]"
+          />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <label className="mb-1 block text-xs font-semibold text-neutral-600">Location</label>
+          <input
+            type="text"
+            placeholder="County, town, or address"
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
             className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]"
           />
         </div>

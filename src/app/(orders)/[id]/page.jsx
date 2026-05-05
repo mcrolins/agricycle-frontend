@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { getRequestContact, getRequestDetail } from "@/app/lib/orders";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { apiFetch } from "@/app/lib/api";
+import ConfirmationModal from "@/app/components/ConfirmationModal";
 
 function formatMoney(value) {
   const numeric = Number(value);
@@ -47,12 +48,12 @@ export default function RequestDetailPage() {
   const [editError, setEditError] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState("");
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
 
   const isPending = request?.status === "PENDING";
   const isProcessor = role === "PROCESSOR";
 
   async function handleCancel() {
-    if (!window.confirm("Are you sure you want to cancel this request?")) return;
     setCancelLoading(true);
     setCancelError("");
     try {
@@ -61,6 +62,7 @@ export default function RequestDetailPage() {
         body: JSON.stringify({ status: "CANCELLED" }),
       });
       setRequest({ ...request, status: "CANCELLED" });
+      setShowCancelConfirmation(false);
     } catch (err) {
       setCancelError(err.message || "Failed to cancel request.");
     } finally {
@@ -265,7 +267,7 @@ export default function RequestDetailPage() {
               {isProcessor && isPending && (
                 <div className="flex gap-2">
                   <button onClick={startEditing} className="text-xs font-semibold text-blue-600 hover:underline">Edit</button>
-                  <button onClick={handleCancel} disabled={cancelLoading} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50">{cancelLoading ? "Cancelling..." : "Cancel"}</button>
+                  <button onClick={() => setShowCancelConfirmation(true)} disabled={cancelLoading} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50">{cancelLoading ? "Cancelling..." : "Cancel"}</button>
                 </div>
               )}
             </div>
@@ -399,6 +401,18 @@ export default function RequestDetailPage() {
           Incoming Requests
         </Link>
       </div>
+      <ConfirmationModal
+        open={showCancelConfirmation}
+        title="Cancel request?"
+        message="This request will be marked as cancelled and can no longer continue as a pending order."
+        confirmLabel="Cancel Request"
+        variant="danger"
+        loading={cancelLoading}
+        onConfirm={handleCancel}
+        onCancel={() => {
+          if (!cancelLoading) setShowCancelConfirmation(false);
+        }}
+      />
     </div>
   );
 }

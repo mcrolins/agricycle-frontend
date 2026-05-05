@@ -5,6 +5,7 @@ import { apiFetch } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/auth";
 import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
 import AdminActionButton from "@/app/components/admin/AdminActionButton";
+import ConfirmationModal from "@/app/components/ConfirmationModal";
 
 type AdminUser = {
   id: number;
@@ -22,6 +23,14 @@ type AdminUser = {
   city?: string | null;
   ward?: string | null;
   address?: string | null;
+  profile?: {
+    location?: string | null;
+    county?: string | null;
+    sub_county?: string | null;
+    city?: string | null;
+    ward?: string | null;
+    address?: string | null;
+  } | null;
 };
 
 type UserListing = {
@@ -67,9 +76,44 @@ function getUserLocation(user: AdminUser) {
     user.sub_county,
     user.ward,
     user.address,
+    user.profile?.location,
+    user.profile?.city,
+    user.profile?.county,
+    user.profile?.sub_county,
+    user.profile?.ward,
+    user.profile?.address,
   ]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .filter((value, index, values) => values.indexOf(value) === index)
     .join(", ");
+}
+
+function escapeHtml(value: string | number | null | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderPrintTable(headers: string[], rows: Array<Array<string | number | null | undefined>>) {
+  if (rows.length === 0) {
+    return "<p class=\"empty\">No records found.</p>";
+  }
+
+  return `
+    <table>
+      <thead>
+        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+          .join("")}
+      </tbody>
+    </table>
+  `;
 }
 
 function getOrderRelationship(order: UserOrder, username: string) {
@@ -155,7 +199,9 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [userIdPendingDelete, setUserIdPendingDelete] = useState<number | null>(null);
   const [nameQuery, setNameQuery] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
   const [joinedDateFilter, setJoinedDateFilter] = useState("");
@@ -181,13 +227,14 @@ export default function AdminUsersPage() {
   }, []);
 
   async function deleteUser(userId: number) {
-    if (!confirm("Are you sure you want to permanently delete this user?")) return;
     setProcessingId(userId);
+    setActionError(null);
     try {
       await apiFetch(`/api/accounts/admin/users/${userId}/`, { method: "DELETE" });
       setUsers((prev) => prev.filter((u) => u.id !== userId));
+      setUserIdPendingDelete(null);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete user");
+      setActionError(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setProcessingId(null);
     }
@@ -228,6 +275,7 @@ export default function AdminUsersPage() {
   );
 
   const selectedActivity = selectedUser ? activityCache[String(selectedUser.id)] : null;
+  const userPendingDelete = users.find((user) => user.id === userIdPendingDelete) ?? null;
 
   useEffect(() => {
     if (selectedUserId == null) return;
@@ -295,6 +343,125 @@ export default function AdminUsersPage() {
     downloadCsv("admin-users.csv", rows);
   }
 
+  function downloadSelectedUserDetails(user: AdminUser, activity: UserActivity | null) {
+    const rows: Array<Array<string | number | null | undefined>> = [
+      ["User Details"],
+      ["Name", getUserDisplayName(user)],
+      ["Username", user.username],
+      ["Email", user.email],
+      ["Phone", user.phone_number || "-"],
+      ["Role", user.role],
+      ["Location", getUserLocation(user) || "-"],
+      ["Date Joined", user.date_joined ? new Date(user.date_joined).toLocaleDateString() : "-"],
+      ["Status", user.is_active ? "Active" : "Inactive"],
+      [],
+      ["Listing History"],
+      ["Listing ID", "Waste Type", "Quantity", "Unit", "Location", "Price (KES)", "Status", "Created"],
+      ...(activity?.listings ?? []).map((listing) => [
+        listing.id,
+        listing.waste_type,
+        listing.quantity,
+        listing.unit,
+        listing.location,
+        listing.price,
+        listing.status,
+        listing.created_at ? new Date(listing.created_at).toLocaleDateString() : "-",
+      ]),
+      [],
+      ["Order Activity"],
+      ["Order ID", "Waste Type", "Quantity Requested", "Unit", "Processor", "Farmer", "Price Per Unit", "Status", "Created"],
+      ...(activity?.orders ?? []).map((order) => [
+        order.id,
+        order.listing_waste_type,
+        order.quantity_requested,
+        order.listing_unit || order.unit || "units",
+        order.processor_username,
+        order.listing_farmer_username,
+        order.proposed_price,
+        order.status,
+        order.created_at ? new Date(order.created_at).toLocaleDateString() : "-",
+      ]),
+    ];
+
+    downloadCsv(`admin-user-${user.username}-details.csv`, rows);
+  }
+
+  function printSelectedUserDetails(user: AdminUser, activity: UserActivity | null) {
+    const printWindow = window.open("", "_blank", "width=960,height=720");
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const listings = activity?.listings ?? [];
+    const orders = activity?.orders ?? [];
+    const documentTitle = `User Details - ${getUserDisplayName(user)}`;
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${escapeHtml(documentTitle)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #171717; margin: 32px; }
+            h1 { margin: 0 0 4px; font-size: 24px; }
+            h2 { margin: 28px 0 10px; font-size: 16px; }
+            p { margin: 4px 0; color: #525252; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+            th, td { border: 1px solid #d4d4d4; padding: 8px; text-align: left; vertical-align: top; }
+            th { background: #f5f5f5; font-weight: 700; }
+            .meta { margin-top: 16px; display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: 13px; }
+            .label { font-weight: 700; color: #262626; }
+            .empty { color: #737373; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(getUserDisplayName(user))}</h1>
+          <p>@${escapeHtml(user.username)} · ${escapeHtml(user.role)}</p>
+          <div class="meta">
+            <span class="label">Email</span><span>${escapeHtml(user.email || "-")}</span>
+            <span class="label">Phone</span><span>${escapeHtml(user.phone_number || "-")}</span>
+            <span class="label">Location</span><span>${escapeHtml(getUserLocation(user) || "-")}</span>
+            <span class="label">Date Joined</span><span>${escapeHtml(user.date_joined ? new Date(user.date_joined).toLocaleDateString() : "-")}</span>
+            <span class="label">Status</span><span>${escapeHtml(user.is_active ? "Active" : "Inactive")}</span>
+          </div>
+          <h2>Listing History (${listings.length})</h2>
+          ${renderPrintTable(
+            ["Listing ID", "Waste Type", "Quantity", "Unit", "Location", "Price", "Status", "Created"],
+            listings.map((listing) => [
+              listing.id,
+              listing.waste_type,
+              listing.quantity,
+              listing.unit,
+              listing.location,
+              listing.price,
+              listing.status,
+              listing.created_at ? new Date(listing.created_at).toLocaleDateString() : "-",
+            ])
+          )}
+          <h2>Order Activity (${orders.length})</h2>
+          ${renderPrintTable(
+            ["Order ID", "Waste Type", "Quantity", "Unit", "Processor", "Farmer", "Price", "Status", "Created"],
+            orders.map((order) => [
+              order.id,
+              order.listing_waste_type,
+              order.quantity_requested,
+              order.listing_unit || order.unit || "units",
+              order.processor_username,
+              order.listing_farmer_username,
+              order.proposed_price,
+              order.status,
+              order.created_at ? new Date(order.created_at).toLocaleDateString() : "-",
+            ])
+          )}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  }
+
   function toggleSelectedUser(userId: number) {
     setSelectedUserId((current) => (current === userId ? null : userId));
   }
@@ -350,6 +517,7 @@ export default function AdminUsersPage() {
 
       {loading && <p className="text-sm text-neutral-500">Loading users...</p>}
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {actionError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{actionError}</div>}
 
       {!loading && !error && (
         <>
@@ -363,6 +531,7 @@ export default function AdminUsersPage() {
                 <tr>
                   <th className="px-5 py-4 uppercase tracking-wider">User</th>
                   <th className="px-5 py-4 uppercase tracking-wider">Contact</th>
+                  <th className="px-5 py-4 uppercase tracking-wider">Location</th>
                   <th className="px-5 py-4 uppercase tracking-wider">Role</th>
                   <th className="px-5 py-4 uppercase tracking-wider">Joined</th>
                   <th className="px-5 py-4 text-right uppercase tracking-wider">Actions</th>
@@ -371,7 +540,7 @@ export default function AdminUsersPage() {
               <tbody className="divide-y divide-[var(--line)]">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-neutral-500">
+                    <td colSpan={6} className="px-5 py-8 text-center text-neutral-500">
                       {users.length === 0 ? "No users found." : "No users match the current filters."}
                     </td>
                   </tr>
@@ -407,6 +576,9 @@ export default function AdminUsersPage() {
                         <p className="text-neutral-900">{user.phone_number}</p>
                         <p className="text-xs text-neutral-500">{user.email}</p>
                       </td>
+                      <td className="px-5 py-4 text-neutral-600">
+                        {getUserLocation(user) || "-"}
+                      </td>
                       <td className="px-5 py-4">
                         <span className={[
                           "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold",
@@ -424,7 +596,7 @@ export default function AdminUsersPage() {
                         <div className="flex justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                           <button
                             disabled={processingId === user.id}
-                            onClick={() => deleteUser(user.id)}
+                            onClick={() => setUserIdPendingDelete(user.id)}
                             className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
                           >
                             Delete
@@ -461,6 +633,21 @@ export default function AdminUsersPage() {
                     </p>
                   </div>
                   <div className="flex items-start gap-4">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <AdminActionButton
+                        onClick={() => downloadSelectedUserDetails(selectedUser, selectedActivity)}
+                        disabled={activityLoading}
+                      >
+                        Download Details
+                      </AdminActionButton>
+                      <AdminActionButton
+                        onClick={() => printSelectedUserDetails(selectedUser, selectedActivity)}
+                        disabled={activityLoading}
+                        variant="primary"
+                      >
+                        Print Details
+                      </AdminActionButton>
+                    </div>
                     <div className="grid grid-cols-2 gap-3 sm:min-w-[240px]">
                       <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500 text-center">Listings</p>
@@ -633,6 +820,24 @@ export default function AdminUsersPage() {
           )}
         </>
       )}
+      <ConfirmationModal
+        open={!!userPendingDelete}
+        title="Delete user?"
+        message={
+          userPendingDelete
+            ? `This will permanently delete ${getUserDisplayName(userPendingDelete)} (@${userPendingDelete.username}). This action cannot be undone.`
+            : "This action cannot be undone."
+        }
+        confirmLabel="Delete User"
+        variant="danger"
+        loading={processingId === userPendingDelete?.id}
+        onConfirm={() => {
+          if (userPendingDelete) void deleteUser(userPendingDelete.id);
+        }}
+        onCancel={() => {
+          if (!processingId) setUserIdPendingDelete(null);
+        }}
+      />
     </div>
   );
 }

@@ -53,6 +53,7 @@ export type BidSummary = {
 
 export type WasteListingDetail = {
   id: number;
+  farmer?: number | string;
   farmer_username: string;
   waste_type: string;
   quantity: string;

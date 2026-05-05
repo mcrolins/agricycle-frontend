@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { kenyaLocationListId, kenyaLocationSuggestions } from "@/app/lib/kenyaLocations";
 import Tooltip from "@/app/components/Tooltip";
+import ConfirmationModal from "@/app/components/ConfirmationModal";
 
 type CreateListingPayload = {
   waste_type: string;
@@ -37,6 +38,7 @@ export default function NewListingPage() {
   });
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [createdListingId, setCreatedListingId] = useState<number | null>(null);
   const [touched, setTouched] = useState({
     quantity: false,
     price: false,
@@ -96,7 +98,7 @@ export default function NewListingPage() {
         body: JSON.stringify(payload),
       });
 
-      router.push(`/listings/${created.id}`);
+      setCreatedListingId(created.id);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to create listing");
     } finally {
@@ -220,6 +222,24 @@ export default function NewListingPage() {
           {loading ? "Creating..." : "Create Listing"}
         </button>
       </form>
+      <ConfirmationModal
+        open={createdListingId != null}
+        title="Listing created"
+        message="Your listing was created successfully and is ready to view."
+        confirmLabel="View Listing"
+        variant="success"
+        showCancel={false}
+        autoCloseMs={3000}
+        onConfirm={() => {
+          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
+        }}
+        onAutoClose={() => {
+          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
+        }}
+        onCancel={() => {
+          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
+        }}
+      />
     </div>
   );
 }

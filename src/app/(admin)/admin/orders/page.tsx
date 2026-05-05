@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/app/lib/api";
 import AdminActionButton from "@/app/components/admin/AdminActionButton";
 import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
@@ -14,9 +14,18 @@ type AdminOrder = {
   proposed_price: string;
   listing_unit?: string;
   unit?: string;
+  listing_location?: string;
+  location?: string;
   status: string;
   created_at: string;
 };
+
+function matchesDateRange(value: string, startDate: string, endDate: string) {
+  const date = (value || "").slice(0, 10);
+  if (startDate && date < startDate) return false;
+  if (endDate && date > endDate) return false;
+  return true;
+}
 
 function statusBadgeClass(status: string) {
   switch ((status || "").toUpperCase()) {
@@ -72,6 +81,41 @@ export default function AdminOrdersPage() {
     void loadOrders();
   }
 
+  const filteredOrders = useMemo(() => {
+    const normalizedProcessorFilter = processorFilter.trim().toLowerCase();
+    const normalizedListingFilter = listingFilter.trim().toLowerCase();
+    const normalizedStatusFilter = statusFilter.trim().toUpperCase();
+
+    return orders.filter((order) => {
+      const matchesProcessor =
+        !normalizedProcessorFilter ||
+        (order.processor_username || "").toLowerCase().includes(normalizedProcessorFilter);
+
+      const matchesListing =
+        !normalizedListingFilter ||
+        [
+          order.listing_waste_type,
+          order.listing_farmer_username,
+          order.listing_location,
+          order.location,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedListingFilter);
+
+      const matchesStatus =
+        !normalizedStatusFilter || (order.status || "").toUpperCase() === normalizedStatusFilter;
+
+      return (
+        matchesProcessor &&
+        matchesListing &&
+        matchesStatus &&
+        matchesDateRange(order.created_at, startDate, endDate)
+      );
+    });
+  }, [endDate, listingFilter, orders, processorFilter, startDate, statusFilter]);
+
   function formatMoney(value: string | number) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return "-";
@@ -81,7 +125,7 @@ export default function AdminOrdersPage() {
   function downloadOrders() {
     const rows: Array<Array<string | number>> = [
       ["Order ID", "Waste Type", "Quantity Requested", "Unit", "Processor", "Farmer", "Price Per Unit", "Estimated Total", "Status", "Created"],
-      ...orders.map((order) => {
+      ...filteredOrders.map((order) => {
         const quantity = Number(order.quantity_requested);
         const unitPrice = Number(order.proposed_price);
         const estimatedTotal =
@@ -113,7 +157,7 @@ export default function AdminOrdersPage() {
           <h1 className="mt-1 text-2xl font-bold text-[var(--brand-strong)]">Manage Orders</h1>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
-          <AdminActionButton onClick={downloadOrders} disabled={loading || orders.length === 0}>
+          <AdminActionButton onClick={downloadOrders} disabled={loading || filteredOrders.length === 0}>
             Download CSV
           </AdminActionButton>
           <AdminActionButton onClick={printCurrentPage} variant="primary">
@@ -207,12 +251,14 @@ export default function AdminOrdersPage() {
                 <tr>
                   <td colSpan={7} className="px-5 py-8 text-center text-neutral-500">Loading orders...</td>
                 </tr>
-              ) : orders.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-neutral-500">No orders found.</td>
+                  <td colSpan={7} className="px-5 py-8 text-center text-neutral-500">
+                    {orders.length === 0 ? "No orders found." : "No orders match the current filters."}
+                  </td>
                 </tr>
               ) : (
-                orders.map((o) => (
+                filteredOrders.map((o) => (
                   <tr key={o.id} className="transition hover:bg-neutral-50">
                     <td className="px-5 py-4 font-mono text-xs text-neutral-500">#{o.id}</td>
                     <td className="px-5 py-4">
