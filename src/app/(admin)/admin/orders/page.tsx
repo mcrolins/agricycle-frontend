@@ -7,8 +7,9 @@ import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
 
 type AdminOrder = {
   id: number;
-  processor_username: string;
-  listing_waste_type: string;
+  buyer_username: string;
+  listing_title: string;
+  listing_category: string;
   listing_farmer_username: string;
   quantity_requested: string;
   proposed_price: string;
@@ -45,7 +46,7 @@ export default function AdminOrdersPage() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("");
-  const [processorFilter, setProcessorFilter] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("");
   const [listingFilter, setListingFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -55,8 +56,8 @@ export default function AdminOrdersPage() {
     try {
       const q = new URLSearchParams();
       if (statusFilter) q.set("status", statusFilter);
-      if (processorFilter) q.set("processor", processorFilter);
-      if (listingFilter) q.set("listing_type", listingFilter);
+      if (buyerFilter) q.set("buyer", buyerFilter);
+      if (listingFilter) q.set("listing_title", listingFilter);
       if (startDate) q.set("start_date", startDate);
       if (endDate) q.set("end_date", endDate);
 
@@ -82,19 +83,20 @@ export default function AdminOrdersPage() {
   }
 
   const filteredOrders = useMemo(() => {
-    const normalizedProcessorFilter = processorFilter.trim().toLowerCase();
+    const normalizedBuyerFilter = buyerFilter.trim().toLowerCase();
     const normalizedListingFilter = listingFilter.trim().toLowerCase();
     const normalizedStatusFilter = statusFilter.trim().toUpperCase();
 
     return orders.filter((order) => {
-      const matchesProcessor =
-        !normalizedProcessorFilter ||
-        (order.processor_username || "").toLowerCase().includes(normalizedProcessorFilter);
+      const matchesBuyer =
+        !normalizedBuyerFilter ||
+        (order.buyer_username || "").toLowerCase().includes(normalizedBuyerFilter);
 
       const matchesListing =
         !normalizedListingFilter ||
         [
-          order.listing_waste_type,
+          order.listing_title,
+          order.listing_category,
           order.listing_farmer_username,
           order.listing_location,
           order.location,
@@ -108,13 +110,13 @@ export default function AdminOrdersPage() {
         !normalizedStatusFilter || (order.status || "").toUpperCase() === normalizedStatusFilter;
 
       return (
-        matchesProcessor &&
+        matchesBuyer &&
         matchesListing &&
         matchesStatus &&
         matchesDateRange(order.created_at, startDate, endDate)
       );
     });
-  }, [endDate, listingFilter, orders, processorFilter, startDate, statusFilter]);
+  }, [endDate, listingFilter, orders, buyerFilter, startDate, statusFilter]);
 
   function formatMoney(value: string | number) {
     const numeric = Number(value);
@@ -124,7 +126,7 @@ export default function AdminOrdersPage() {
 
   function downloadOrders() {
     const rows: Array<Array<string | number>> = [
-      ["Order ID", "Waste Type", "Quantity Requested", "Unit", "Processor", "Farmer", "Price Per Unit", "Estimated Total", "Status", "Created"],
+      ["Order ID", "Item Title", "Category", "Quantity Requested", "Unit", "Buyer", "Farmer", "Price Per Unit", "Estimated Total", "Status", "Created"],
       ...filteredOrders.map((order) => {
         const quantity = Number(order.quantity_requested);
         const unitPrice = Number(order.proposed_price);
@@ -133,10 +135,11 @@ export default function AdminOrdersPage() {
 
         return [
           order.id,
-          order.listing_waste_type,
+          order.listing_title,
+          order.listing_category,
           order.quantity_requested,
           order.listing_unit || order.unit || "units",
-          order.processor_username,
+          order.buyer_username,
           order.listing_farmer_username,
           order.proposed_price,
           estimatedTotal,
@@ -169,21 +172,21 @@ export default function AdminOrdersPage() {
       {/* Filters Bar */}
       <form onSubmit={handleSearch} className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 print:hidden">
         <div className="flex-1 min-w-[150px]">
-          <label className="mb-1 block text-xs font-semibold text-neutral-600">Processor (Buyer)</label>
+          <label className="mb-1 block text-xs font-semibold text-neutral-600">Buyer</label>
           <input
             type="text"
             placeholder="e.g. john"
-            value={processorFilter}
-            onChange={(e) => setProcessorFilter(e.target.value)}
+            value={buyerFilter}
+            onChange={(e) => setBuyerFilter(e.target.value)}
             className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]"
           />
         </div>
         
         <div className="flex-1 min-w-[150px]">
-          <label className="mb-1 block text-xs font-semibold text-neutral-600">Listing Type</label>
+          <label className="mb-1 block text-xs font-semibold text-neutral-600">Item Name/Category</label>
           <input
             type="text"
-            placeholder="e.g. manure"
+            placeholder="e.g. equipment"
             value={listingFilter}
             onChange={(e) => setListingFilter(e.target.value)}
             className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]"
@@ -239,7 +242,7 @@ export default function AdminOrdersPage() {
               <tr>
                 <th className="px-5 py-4 uppercase tracking-wider">Order ID</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Item & qty</th>
-                <th className="px-5 py-4 uppercase tracking-wider">Buyer (Processor)</th>
+                <th className="px-5 py-4 uppercase tracking-wider">Buyer</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Price Per Unit</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Estimated Total</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Status</th>
@@ -262,11 +265,11 @@ export default function AdminOrdersPage() {
                   <tr key={o.id} className="transition hover:bg-neutral-50">
                     <td className="px-5 py-4 font-mono text-xs text-neutral-500">#{o.id}</td>
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-neutral-900">{o.listing_waste_type}</p>
-                      <p className="text-xs text-neutral-500">{o.quantity_requested} {o.listing_unit || o.unit || "units"} requested</p>
+                      <p className="font-semibold text-neutral-900">{o.listing_title}</p>
+                      <p className="text-xs text-neutral-500">{o.listing_category} · {o.quantity_requested} {o.listing_unit || o.unit || "units"} requested</p>
                     </td>
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-[var(--accent)]">@{o.processor_username}</p>
+                      <p className="font-semibold text-[var(--accent)]">@{o.buyer_username}</p>
                     </td>
                     <td className="px-5 py-4 font-semibold text-neutral-900">
                       {o.proposed_price ? `KES ${formatMoney(o.proposed_price)} / ${o.listing_unit || o.unit || "unit"}` : "-"}

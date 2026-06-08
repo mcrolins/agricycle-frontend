@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/app/lib/api";
-import type { WasteListingListItem } from "@/app/lib/types";
+import type { ListingListItem } from "@/app/lib/types";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { getIncomingRequests, updateRequestStatus } from "@/app/lib/orders";
 
 type ListingRequest = {
   id: number;
   listing_waste_type?: string;
+  listing_title?: string;
+  listing_category?: string;
   waste_type?: string;
   listing_unit?: string;
   unit?: string;
@@ -21,27 +23,28 @@ type ListingRequest = {
   notes?: string;
   status?: string;
   processor_username?: string;
+  buyer_username?: string;
   bidder_username?: string;
   username?: string;
 };
 
 export default function MyListingsPage() {
   const { role, username } = useAuthState();
-  const [listings, setListings] = useState<WasteListingListItem[]>([]);
+  const [listings, setListings] = useState<ListingListItem[]>([]);
   const [requests, setRequests] = useState<ListingRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionId, setActionId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!username || role !== "FARMER") return;
+    if (!username || (role !== "FARMER" && role !== "CONTRACTOR")) return;
     let mounted = true;
 
     const load = async () => {
       try {
         setError("");
         const [allListings, incomingRequests] = await Promise.all([
-          apiFetch<WasteListingListItem[]>(`/api/v1/listings/`, { method: "GET" }, { auth: false }),
+          apiFetch<ListingListItem[]>(`/api/v1/listings/`, { method: "GET" }, { auth: false }),
           getIncomingRequests(),
         ]);
 
@@ -86,10 +89,10 @@ export default function MyListingsPage() {
     return numeric.toLocaleString();
   }
 
-  if (role && role !== "FARMER") {
+  if (role && role !== "FARMER" && role !== "CONTRACTOR") {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        My Listings is only available to farmer accounts.{" "}
+        My Listings is only available to farmer and contractor accounts.{" "}
         <Link href="/orders/my" className="font-semibold underline">
           Go to my requests
         </Link>
@@ -99,12 +102,12 @@ export default function MyListingsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
+    <div className="px-4 py-8 md:px-10 md:py-10 max-w-[1400px] mx-auto w-full space-y-8 pb-24 md:pb-8">
+      <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 md:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Farmer Workspace</p>
         <h1 className="mt-1 text-2xl font-bold text-[var(--brand-strong)] sm:text-3xl">My Listings</h1>
         <p className="mt-2 text-sm text-neutral-700">
-          Monitor your listings, review incoming requests, and respond quickly when processors reach out.
+          Monitor your listings, review incoming requests, and respond quickly when buyers reach out.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl bg-white px-4 py-3">
@@ -118,7 +121,7 @@ export default function MyListingsPage() {
           <div className="rounded-xl bg-white px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Next Step</p>
             <p className="mt-1 text-sm font-semibold text-neutral-900">
-              {pendingCount > 0 ? "Review incoming requests" : "Share listings with processors"}
+              {pendingCount > 0 ? "Review incoming requests" : "Share listings with buyers"}
             </p>
           </div>
         </div>
@@ -134,7 +137,7 @@ export default function MyListingsPage() {
       )}
 
       {!loading && !error && (
-        <section className="space-y-3 rounded-2xl border bg-white p-4">
+        <section className="space-y-4 rounded-2xl border bg-white p-5 md:p-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Your Listings</h2>
             <Link href="/listings/new" className="rounded-xl border px-4 py-2 text-sm font-semibold">
@@ -142,15 +145,15 @@ export default function MyListingsPage() {
             </Link>
           </div>
           {listings.length === 0 && <p className="text-sm text-neutral-600">You have not created any listings yet.</p>}
-          <div className="space-y-3">
+          <div className="space-y-4">
             {listings.map((listing) => (
               <Link
                 key={listing.id}
                 href={`/listings/${listing.id}`}
-                className="flex flex-col gap-2 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4 transition hover:-translate-y-0.5 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5 transition hover:-translate-y-0.5 hover:shadow-sm sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <p className="text-sm font-semibold text-[var(--brand-strong)]">{listing.waste_type}</p>
+                  <p className="text-sm font-semibold text-[var(--brand-strong)]">{listing.title}</p>
                   <p className="mt-1 text-sm text-neutral-600">
                     {listing.quantity} {listing.unit} · {listing.location}
                   </p>
@@ -165,19 +168,19 @@ export default function MyListingsPage() {
       )}
 
       {!loading && !error && (
-        <section className="space-y-3 rounded-2xl border bg-white p-4">
+        <section className="space-y-4 rounded-2xl border bg-white p-5 md:p-6">
           <h2 className="text-lg font-semibold">Incoming Requests</h2>
-          {requests.length === 0 && <p className="text-sm text-neutral-600">No processors have requested your listings yet.</p>}
-          <div className="space-y-3">
+          {requests.length === 0 && <p className="text-sm text-neutral-600">No buyers have requested your listings yet.</p>}
+          <div className="space-y-4">
             {requests.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-4">
+              <div key={request.id} className="rounded-2xl border border-[var(--line)] bg-[var(--card)] p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-[var(--brand-strong)]">
-                      {request.listing_waste_type || request.waste_type || "Listing request"}
+                      {request.listing_title || request.listing_waste_type || request.waste_type || "Listing request"}
                     </p>
                     <p className="mt-1 text-sm text-neutral-600">
-                      @{request.processor_username || request.bidder_username || request.username || "processor"} requested{" "}
+                      @{request.buyer_username || request.processor_username || request.bidder_username || request.username || "buyer"} requested{" "}
                       {request.quantity_requested ?? request.quantity ?? "-"} {request.listing_unit || request.unit || "units"} at KES{" "}
                       {formatMoney(request.proposed_price ?? request.price)} per {request.listing_unit || request.unit || "unit"}
                     </p>

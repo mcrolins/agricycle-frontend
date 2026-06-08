@@ -35,7 +35,9 @@ type AdminUser = {
 
 type UserListing = {
   id: number;
-  waste_type: string;
+  title: string;
+  category: string;
+  listing_type: string;
   quantity: string;
   unit: string;
   price: string;
@@ -47,8 +49,9 @@ type UserListing = {
 
 type UserOrder = {
   id: number;
-  processor_username: string;
-  listing_waste_type: string;
+  buyer_username: string;
+  listing_title: string;
+  listing_category: string;
   listing_farmer_username: string;
   quantity_requested: string;
   proposed_price: string;
@@ -117,7 +120,7 @@ function renderPrintTable(headers: string[], rows: Array<Array<string | number |
 }
 
 function getOrderRelationship(order: UserOrder, username: string) {
-  const isBuyer = order.processor_username === username;
+  const isBuyer = order.buyer_username === username;
   const isSeller = order.listing_farmer_username === username;
 
   if (isBuyer && isSeller) {
@@ -136,7 +139,7 @@ function getOrderRelationship(order: UserOrder, username: string) {
 
   return {
     label: "Received Order",
-    otherUser: order.processor_username,
+    otherUser: order.buyer_username,
   };
 }
 
@@ -182,7 +185,7 @@ async function fetchUserActivityFallback(user: AdminUser) {
     ),
     orders: (Array.isArray(orders) ? orders : []).filter(
       (order) =>
-        order.processor_username === user.username || order.listing_farmer_username === user.username
+        order.buyer_username === user.username || order.listing_farmer_username === user.username
     ),
   } satisfies UserActivity;
 }
@@ -356,10 +359,12 @@ export default function AdminUsersPage() {
       ["Status", user.is_active ? "Active" : "Inactive"],
       [],
       ["Listing History"],
-      ["Listing ID", "Waste Type", "Quantity", "Unit", "Location", "Price (KES)", "Status", "Created"],
+      ["Listing ID", "Item Title", "Category", "Listing Type", "Quantity", "Unit", "Location", "Price (KES)", "Status", "Created"],
       ...(activity?.listings ?? []).map((listing) => [
         listing.id,
-        listing.waste_type,
+        listing.title,
+        listing.category,
+        listing.listing_type,
         listing.quantity,
         listing.unit,
         listing.location,
@@ -369,13 +374,14 @@ export default function AdminUsersPage() {
       ]),
       [],
       ["Order Activity"],
-      ["Order ID", "Waste Type", "Quantity Requested", "Unit", "Processor", "Farmer", "Price Per Unit", "Status", "Created"],
+      ["Order ID", "Item Title", "Category", "Quantity Requested", "Unit", "Buyer", "Farmer", "Price Per Unit", "Status", "Created"],
       ...(activity?.orders ?? []).map((order) => [
         order.id,
-        order.listing_waste_type,
+        order.listing_title,
+        order.listing_category,
         order.quantity_requested,
         order.listing_unit || order.unit || "units",
-        order.processor_username,
+        order.buyer_username,
         order.listing_farmer_username,
         order.proposed_price,
         order.status,
@@ -427,10 +433,11 @@ export default function AdminUsersPage() {
           </div>
           <h2>Listing History (${listings.length})</h2>
           ${renderPrintTable(
-            ["Listing ID", "Waste Type", "Quantity", "Unit", "Location", "Price", "Status", "Created"],
+            ["Listing ID", "Item Title", "Category", "Quantity", "Unit", "Location", "Price", "Status", "Created"],
             listings.map((listing) => [
               listing.id,
-              listing.waste_type,
+              listing.title,
+              listing.category,
               listing.quantity,
               listing.unit,
               listing.location,
@@ -441,13 +448,14 @@ export default function AdminUsersPage() {
           )}
           <h2>Order Activity (${orders.length})</h2>
           ${renderPrintTable(
-            ["Order ID", "Waste Type", "Quantity", "Unit", "Processor", "Farmer", "Price", "Status", "Created"],
+            ["Order ID", "Item Title", "Category", "Quantity", "Unit", "Buyer", "Farmer", "Price", "Status", "Created"],
             orders.map((order) => [
               order.id,
-              order.listing_waste_type,
+              order.listing_title,
+              order.listing_category,
               order.quantity_requested,
               order.listing_unit || order.unit || "units",
-              order.processor_username,
+              order.buyer_username,
               order.listing_farmer_username,
               order.proposed_price,
               order.status,
@@ -583,7 +591,8 @@ export default function AdminUsersPage() {
                         <span className={[
                           "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold",
                           user.role === "ADMIN" ? "bg-violet-100 text-violet-700" :
-                          user.role === "PROCESSOR" ? "bg-amber-100 text-amber-700" :
+                          user.role === "BUYER" ? "bg-amber-100 text-amber-700" :
+                          user.role === "CONTRACTOR" ? "bg-blue-100 text-blue-700" :
                           "bg-[var(--brand-soft)] text-[var(--brand-strong)]"
                         ].join(" ")}>
                           {user.role}
@@ -691,9 +700,9 @@ export default function AdminUsersPage() {
                   )}
 
                   {!activityLoading && !activityError && selectedActivity && (
-                    <div className={selectedUser.role === "PROCESSOR" ? "space-y-6" : "grid gap-6 xl:grid-cols-2"}>
-                      {/* Listings Section (Hidden or simplified for processors if needed, but keeping for now unless empty) */}
-                      {selectedUser.role !== "PROCESSOR" && (
+                    <div className={selectedUser.role === "BUYER" ? "space-y-6" : "grid gap-6 xl:grid-cols-2"}>
+                      {/* Listings Section */}
+                      {selectedUser.role !== "BUYER" && (
                         <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm">
                           <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">
                             <h3 className="font-semibold text-[var(--brand-strong)]">Listing History</h3>
@@ -717,9 +726,9 @@ export default function AdminUsersPage() {
                                   {selectedActivity.listings.map((listing) => (
                                     <tr key={listing.id} className="hover:bg-neutral-50/50 transition">
                                       <td className="px-4 py-4">
-                                        <p className="font-bold text-neutral-900">{listing.waste_type}</p>
+                                        <p className="font-bold text-neutral-900">{listing.title}</p>
                                         <p className="text-[11px] text-neutral-500 font-medium mt-0.5">
-                                          {listing.quantity} {listing.unit} · {new Date(listing.created_at).toLocaleDateString()}
+                                          {listing.category} · {listing.quantity} {listing.unit} · {new Date(listing.created_at).toLocaleDateString()}
                                         </p>
                                       </td>
                                       <td className="px-4 py-4 text-neutral-600 text-xs font-medium">{listing.location}</td>
@@ -746,9 +755,9 @@ export default function AdminUsersPage() {
                       <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm">
                         <div className="border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3 flex justify-between items-center">
                           <h3 className="font-semibold text-[var(--brand-strong)]">
-                            {selectedUser.role === "PROCESSOR" ? "Order Activity" : "Order History"}
+                            {selectedUser.role === "BUYER" ? "Order Activity" : "Order History"}
                           </h3>
-                          {selectedUser.role === "PROCESSOR" && (
+                          {selectedUser.role === "BUYER" && (
                             <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Minimal View</span>
                           )}
                         </div>
@@ -762,9 +771,9 @@ export default function AdminUsersPage() {
                               <thead className="bg-neutral-50/50 text-xs font-semibold uppercase tracking-wider text-neutral-500">
                                 <tr>
                                   <th className="px-4 py-3 text-center">Order ID</th>
-                                  <th className="px-4 py-3">Waste Category</th>
+                                  <th className="px-4 py-3">Item Details</th>
                                   <th className="px-4 py-3">Relation</th>
-                                  {selectedUser.role !== "PROCESSOR" && <th className="px-4 py-3">Counterparty</th>}
+                                  {selectedUser.role !== "BUYER" && <th className="px-4 py-3">Counterparty</th>}
                                   <th className="px-4 py-3">Status</th>
                                 </tr>
                               </thead>
@@ -778,9 +787,9 @@ export default function AdminUsersPage() {
                                         #{order.id}
                                       </td>
                                       <td className="px-4 py-4">
-                                        <p className="font-bold text-neutral-900">{order.listing_waste_type}</p>
+                                        <p className="font-bold text-neutral-900">{order.listing_title}</p>
                                         <p className="text-[11px] text-neutral-500 font-medium mt-0.5">
-                                          {order.quantity_requested} {order.listing_unit || order.unit || "units"} · {new Date(order.created_at).toLocaleDateString()}
+                                          {order.listing_category} · {order.quantity_requested} {order.listing_unit || order.unit || "units"} · {new Date(order.created_at).toLocaleDateString()}
                                         </p>
                                       </td>
                                       <td className="px-4 py-4">
@@ -790,7 +799,7 @@ export default function AdminUsersPage() {
                                           {relationship.label}
                                         </span>
                                       </td>
-                                      {selectedUser.role !== "PROCESSOR" && (
+                                      {selectedUser.role !== "BUYER" && (
                                         <td className="px-4 py-4 text-neutral-600 font-medium text-xs">
                                           @{relationship.otherUser}
                                         </td>

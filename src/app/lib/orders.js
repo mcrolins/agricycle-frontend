@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 
-// Processor: create a new request
+// Buyer: create a new request
 export async function createRequest(data) {
   const payloads = [
     data,
@@ -50,7 +50,7 @@ export async function createRequest(data) {
   throw lastError ?? new Error("Failed to create request.");
 }
 
-// Processor: my requests
+// Buyer: my requests
 export const getMyRequests = () =>
   apiFetch(`/api/requests/mine/`);
 
@@ -65,7 +65,7 @@ export const updateRequestStatus = (id, status) =>
     body: JSON.stringify({ status }),
   });
 
-// Get contact info (farmer + processor)
+// Get contact info (farmer + buyer)
 export const getRequestContact = (id) =>
   apiFetch(`/api/requests/${id}/contact/`);
 

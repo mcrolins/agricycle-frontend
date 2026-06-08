@@ -117,7 +117,7 @@ export async function register(payload: {
   last_name: string;
   email: string;
   password: string;
-  role: "FARMER" | "PROCESSOR";
+  role: "FARMER" | "BUYER" | "CONTRACTOR";
   phone_number: string;
 }) {
   return apiFetch(

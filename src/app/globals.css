@@ -1,41 +1,129 @@
 @import "tailwindcss";
 
 :root {
-  --font-body: "Trebuchet MS", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  --font-display: "Palatino Linotype", "Book Antiqua", Palatino, serif;
-  --font-mono: "Courier New", Courier, monospace;
-  --background: #eef4e7;
-  --foreground: #243021;
-  --surface: #f8f3e7;
-  --surface-strong: #f2ebdb;
-  --card: #fffdf8;
-  --brand: #4d7a3b;
-  --brand-strong: #36592a;
-  --brand-soft: #d7e5c7;
-  --accent: #b87d30;
-  --line: #d9d2c0;
+  /* Fonts */
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Inter", system-ui, -apple-system, sans-serif;
+  
+  /* Modern Clean Backgrounds */
+  --background: #f5f6f8;
+  --foreground: #1e293b;
+  --surface: #ffffff;
+  --surface-strong: #f8fafc;
+  --card: #ffffff;
+  
+  /* Brand Colors - Modern Agri Theme */
+  --brand: #16a34a;        /* Vibrant Green */
+  --brand-strong: #15803d; /* Darker Green for hover */
+  --brand-soft: #dcfce7;   /* Light Green for subtle bg */
+  
+  /* Action/Accent Colors - Jumia Inspired */
+  --accent: #f97316;       /* Bright Orange for Cart/Buy */
+  --accent-strong: #ea580c;
+  --accent-soft: #ffedd5;
+  
+  /* Category Colors */
+  --cat-fresh: #ef4444;    /* Red/Pink */
+  --cat-animal: #8b5cf6;   /* Purple */
+  --cat-waste: #a3e635;    /* Lime Green */
+  --cat-inputs: #06b6d4;   /* Cyan */
+  --cat-equip: #f59e0b;    /* Amber */
+
+  /* Structural */
+  --line: #e2e8f0;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
-  --font-mono: var(--font-mono);
 }
 
 body {
-  background:
-    radial-gradient(70rem 28rem at 10% -20%, #e1ecd2 0%, transparent 70%),
-    radial-gradient(52rem 22rem at 100% 0%, #f0e2c8 0%, transparent 64%),
-    linear-gradient(180deg, #f3f7eb 0%, var(--background) 42%, #eef4e7 100%);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1,
-h2,
-h3,
-h4 {
+h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Utilities */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-left {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-left {
+    animation: slide-left 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
 }

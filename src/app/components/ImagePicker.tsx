@@ -2,20 +2,23 @@
 
 import { useRef, useState } from "react";
 
-export default function ImagePicker({ onPick }: { onPick: (file: File) => void }) {
+export default function ImagePicker({ onPick }: { onPick: (files: File[]) => void }) {
   const ref = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  function pickFile(file: File | undefined) {
-    if (!file || !file.type.startsWith("image/")) return;
-    onPick(file);
+  function pickFiles(fileList: FileList | File[] | null | undefined) {
+    if (!fileList) return;
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (files.length > 0) {
+      onPick(files);
+    }
     if (ref.current) ref.current.value = "";
   }
 
   return (
     <div
       className={[
-        "rounded-2xl border-2 border-dashed bg-white p-5 transition",
+        "rounded-2xl border-2 border-dashed bg-white p-5 transition text-center",
         isDragging ? "border-[var(--brand)] bg-[var(--brand-soft)]/30" : "border-[var(--line)]",
       ].join(" ")}
       onDragEnter={(event) => {
@@ -34,19 +37,20 @@ export default function ImagePicker({ onPick }: { onPick: (file: File) => void }
       onDrop={(event) => {
         event.preventDefault();
         setIsDragging(false);
-        pickFile(event.dataTransfer.files?.[0]);
+        pickFiles(event.dataTransfer.files);
       }}
     >
-      <p className="text-sm font-semibold">Add photo</p>
-      <p className="mt-1 text-xs text-neutral-500">Drag and drop an image here, or choose one from your device.</p>
+      <p className="text-sm font-semibold">Add photos</p>
+      <p className="mt-1 text-xs text-neutral-500">Drag and drop images here, or choose from your device.</p>
 
       <input
         ref={ref}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          pickFile(e.target.files?.[0]);
+          pickFiles(e.target.files);
         }}
       />
 
@@ -55,7 +59,7 @@ export default function ImagePicker({ onPick }: { onPick: (file: File) => void }
         onClick={() => ref.current?.click()}
         className="mt-4 w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
       >
-        Choose Image
+        Choose Images
       </button>
     </div>
   );

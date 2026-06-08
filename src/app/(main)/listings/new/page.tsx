@@ -6,63 +6,45 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { kenyaLocationListId, kenyaLocationSuggestions } from "@/app/lib/kenyaLocations";
-import Tooltip from "@/app/components/Tooltip";
 import ConfirmationModal from "@/app/components/ConfirmationModal";
 
 type CreateListingPayload = {
-  waste_type: string;
+  title: string;
+  description: string;
+  category: string;
   quantity: number;
   unit: string;
   location: string;
-  notes: string;
-  status: string;
   price?: number;
-};
-
-type CreateListingResponse = {
-  id: number;
+  listing_type: string;
+  condition?: string;
+  rental_period?: string;
+  status: string;
 };
 
 export default function NewListingPage() {
   const router = useRouter();
   const { accessToken, role } = useAuthState();
   const isFarmer = role === "FARMER";
+  const isContractor = role === "CONTRACTOR";
+  
   const [form, setForm] = useState({
-    waste_type: "",
+    title: "",
+    description: "",
+    category: isContractor ? "EQUIPMENT" : "FRESH_PRODUCE",
     quantity: "",
     unit: "kg",
     location: "",
     price: "",
-    notes: "",
+    listing_type: isContractor ? "RENTAL" : "SALE",
+    condition: "NEW",
+    rental_period: "PER_DAY",
     status: "OPEN",
   });
+  
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [createdListingId, setCreatedListingId] = useState<number | null>(null);
-  const [touched, setTouched] = useState({
-    quantity: false,
-    price: false,
-  });
-
-  const quantityValue = Number(form.quantity);
-  const quantityEmpty = form.quantity.trim().length === 0;
-  const quantityInvalid = !quantityEmpty && (!Number.isFinite(quantityValue) || quantityValue <= 0);
-  const quantityError =
-    touched.quantity || loading
-      ? quantityEmpty
-        ? "Quantity is required."
-        : quantityInvalid
-        ? "Quantity must be greater than 0."
-        : null
-      : null;
-  const priceValue = Number(form.price);
-  const priceInvalid = form.price.trim().length > 0 && (!Number.isFinite(priceValue) || priceValue < 0);
-  const priceError =
-    touched.price || loading
-      ? priceInvalid
-        ? "Price cannot be negative."
-        : null
-      : null;
 
   function update(k: string, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -70,30 +52,36 @@ export default function NewListingPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ quantity: true, price: true });
-    if (!isFarmer) {
-      setErr("Only FARMER accounts can create listings.");
+    if (!isFarmer && !isContractor) {
+      setErr("Only FARMER and CONTRACTOR accounts can create listings.");
       return;
     }
-    if (quantityEmpty || quantityInvalid || priceInvalid) {
-      setErr("Fix the highlighted field before creating the listing.");
+    
+    if (isContractor && form.category !== "EQUIPMENT") {
+      setErr("Contractors can only list equipment.");
       return;
     }
+
     setErr(null);
     setLoading(true);
 
     try {
       const payload: CreateListingPayload = {
-        waste_type: form.waste_type,
+        title: form.title,
+        description: form.description,
+        category: form.category,
         quantity: Number(form.quantity),
         unit: form.unit,
         location: form.location,
-        notes: form.notes,
+        listing_type: form.listing_type,
         status: form.status,
       };
+      
       if (form.price) payload.price = Number(form.price);
+      if (form.category === "EQUIPMENT") payload.condition = form.condition;
+      if (form.listing_type === "RENTAL") payload.rental_period = form.rental_period;
 
-      const created = await apiFetch<CreateListingResponse>("/api/v1/listings/", {
+      const created = await apiFetch<{ id: number }>("/api/v1/listings/", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -108,137 +96,144 @@ export default function NewListingPage() {
 
   if (!accessToken) {
     return (
-      <div className="rounded-2xl border bg-white p-4">
-        <h1 className="text-xl font-bold">Create Listing</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          Please{" "}
-          <Link href="/login" className="font-semibold underline">
-            log in
-          </Link>{" "}
-          as a farmer to create a listing.
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-bold text-[var(--foreground)]">Create Listing</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Please <Link href="/login" className="font-bold text-[var(--brand)] underline">log in</Link> as a seller.
         </p>
       </div>
     );
   }
 
-  if (!isFarmer) {
+  if (!isFarmer && !isContractor) {
     return (
-      <div className="rounded-2xl border bg-white p-4">
-        <h1 className="text-xl font-bold">Create Listing</h1>
-        <p className="mt-2 text-sm text-neutral-600">
-          This page is only available to FARMER accounts.
-        </p>
+      <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-bold text-[var(--foreground)]">Access Denied</h1>
+        <p className="mt-2 text-sm text-slate-600">This page is only available to FARMER and CONTRACTOR accounts.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold">Create Listing</h1>
+    <div className="max-w-2xl mx-auto space-y-6 pb-24 p-4">
+      <div className="bg-[var(--surface)] p-4 rounded-xl border border-[var(--line)] shadow-sm">
+        <h1 className="text-2xl font-bold text-[var(--brand-strong)]">Sell an Item</h1>
+        <p className="text-sm text-slate-600 mt-1">List your produce, equipment or waste to millions of buyers.</p>
+      </div>
 
-      {err && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>}
+      {err && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700 shadow-sm">{err}</div>}
 
-      <form onSubmit={onSubmit} className="space-y-3 rounded-2xl border bg-white p-4">
-        <div className="flex gap-2 items-center w-full relative">
-          <input required className="w-full rounded-xl border px-3 py-3 text-sm" placeholder="Waste category / type"
-            value={form.waste_type} onChange={(e) => update("waste_type", e.target.value)} />
-          <Tooltip text="What is waste category? Examples: Crop residue, animal waste, processing by-products. Be specific (e.g., Maize stalks, cow dung).">
-            <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200" aria-label="What is waste category?">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-            </button>
-          </Tooltip>
+      <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border bg-white p-5 shadow-sm">
+        <div>
+          <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Title</label>
+          <input required className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none transition-all bg-slate-50 focus:bg-white" placeholder="What are you selling?"
+            value={form.title} onChange={(e) => update("title", e.target.value)} />
         </div>
 
-        <div className="flex gap-2">
-          <div className="w-full">
-            <input
-              required
-              min="0"
-              step="any"
-              aria-invalid={quantityError ? "true" : "false"}
-              className={`w-full rounded-xl border px-3 py-3 text-sm ${quantityError ? "border-red-300 bg-red-50" : ""}`}
-              placeholder="Quantity"
-              inputMode="decimal"
-              value={form.quantity}
-              onBlur={() => setTouched((current) => ({ ...current, quantity: true }))}
-              onChange={(e) => update("quantity", e.target.value)}
-            />
-            {quantityError && <p className="mt-1 text-xs text-red-600">{quantityError}</p>}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Category</label>
+            <select className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white"
+              value={form.category} onChange={(e) => update("category", e.target.value)} disabled={isContractor}>
+              {!isContractor && <option value="FRESH_PRODUCE">Fresh Produce</option>}
+              {!isContractor && <option value="ANIMAL_PRODUCE">Animal Produce</option>}
+              {!isContractor && <option value="FARM_WASTE">Farm Waste</option>}
+              {!isContractor && <option value="AGRI_INPUTS">Agri Inputs</option>}
+              <option value="EQUIPMENT">Equipment</option>
+            </select>
           </div>
-          <select className="w-32 rounded-xl border px-3 py-3 text-sm"
-            value={form.unit} onChange={(e) => update("unit", e.target.value)}>
-            <option value="kg">kg</option>
-            <option value="bags">bags</option>
-            <option value="tons">tons</option>
-          </select>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Listing Type</label>
+            <select className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white"
+              value={form.listing_type} onChange={(e) => update("listing_type", e.target.value)}>
+              <option value="SALE">For Sale</option>
+              <option value="RENTAL">For Rent</option>
+            </select>
+          </div>
+        </div>
+
+        {form.category === "EQUIPMENT" && (
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Condition</label>
+            <select className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white"
+              value={form.condition} onChange={(e) => update("condition", e.target.value)}>
+              <option value="NEW">New</option>
+              <option value="USED">Used</option>
+              <option value="REFURBISHED">Refurbished</option>
+            </select>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Quantity</label>
+            <input required min="0.01" step="any" type="number" className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white" placeholder="Amount"
+              value={form.quantity} onChange={(e) => update("quantity", e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Unit</label>
+            <select className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white"
+              value={form.unit} onChange={(e) => update("unit", e.target.value)}>
+              <option value="kg">kg</option>
+              <option value="bags">bags</option>
+              <option value="tons">tons</option>
+              <option value="items">items</option>
+              <option value="units">units</option>
+            </select>
+          </div>
         </div>
 
         <div>
-          <input
-            required
-            className="w-full rounded-xl border px-3 py-3 text-sm"
-            placeholder="Search county or enter a custom location"
-            list={kenyaLocationListId}
-            value={form.location}
-            onChange={(e) => update("location", e.target.value)}
-          />
+          <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Location</label>
+          <input required className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white" placeholder="County / Town" list={kenyaLocationListId}
+            value={form.location} onChange={(e) => update("location", e.target.value)} />
           <datalist id={kenyaLocationListId}>
-            {kenyaLocationSuggestions.map((location) => (
-              <option key={location} value={location} />
-            ))}
+            {kenyaLocationSuggestions.map((loc) => <option key={loc} value={loc} />)}
           </datalist>
-          <p className="mt-1 text-xs text-neutral-500">
-            Search from all 47 counties and popular locations like `Njoro, Nakuru County`, or type a custom place if it is not listed.
-          </p>
         </div>
 
-        <div className="relative">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <span className="text-sm font-semibold text-neutral-500">Ksh</span>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Price (KES)</label>
+            <input type="number" min="0" step="any" className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white" placeholder="Optional"
+              value={form.price} onChange={(e) => update("price", e.target.value)} />
           </div>
-          <input className={`w-full rounded-xl border py-3 pl-[3.25rem] pr-3 text-sm ${priceError ? "border-red-300 bg-red-50" : ""}`} placeholder="Price (optional)" inputMode="decimal"
-            min="0"
-            step="any"
-            aria-invalid={priceError ? "true" : "false"}
-            value={form.price}
-            onBlur={() => setTouched((current) => ({ ...current, price: true }))}
-            onChange={(e) => update("price", e.target.value)} />
+          
+          {form.listing_type === "RENTAL" && (
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Rental Period</label>
+              <select className="w-full rounded-xl border px-4 py-3 text-sm focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white"
+                value={form.rental_period} onChange={(e) => update("rental_period", e.target.value)}>
+                <option value="PER_DAY">Per Day</option>
+                <option value="PER_WEEK">Per Week</option>
+                <option value="PER_MONTH">Per Month</option>
+              </select>
+            </div>
+          )}
         </div>
-        {priceError && <p className="-mt-2 text-xs text-red-600">{priceError}</p>}
 
-        <textarea className="w-full rounded-xl border px-3 py-3 text-sm" placeholder="Notes"
-          value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+        <div>
+          <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Description</label>
+          <textarea className="w-full rounded-xl border px-4 py-3 text-sm h-24 focus:ring-2 focus:ring-[var(--brand)] outline-none bg-slate-50 focus:bg-white" placeholder="Add more details..."
+            value={form.description} onChange={(e) => update("description", e.target.value)} />
+        </div>
 
-        <select className="w-full rounded-xl border px-3 py-3 text-sm"
-          value={form.status} onChange={(e) => update("status", e.target.value)}>
-          <option value="OPEN">OPEN</option>
-          <option value="REQUESTED">REQUESTED</option>
-          <option value="ACCEPTED">ACCEPTED</option>
-          <option value="COMPLETED">COMPLETED</option>
-          <option value="CANCELLED">CANCELLED</option>
-        </select>
-
-        <button disabled={loading} className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-          {loading ? "Creating..." : "Create Listing"}
+        <button disabled={loading} className="w-full rounded-full bg-[var(--accent)] px-4 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-[var(--accent-strong)] disabled:opacity-60 transition-colors">
+          {loading ? "Publishing..." : "Publish Listing"}
         </button>
       </form>
+
       <ConfirmationModal
         open={createdListingId != null}
-        title="Listing created"
-        message="Your listing was created successfully and is ready to view."
+        title="Listing Published!"
+        message="Your listing is now live on the marketplace. You can upload photos next."
         confirmLabel="View Listing"
         variant="success"
         showCancel={false}
         autoCloseMs={3000}
-        onConfirm={() => {
-          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
-        }}
-        onAutoClose={() => {
-          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
-        }}
-        onCancel={() => {
-          if (createdListingId != null) router.push(`/listings/${createdListingId}`);
-        }}
+        onConfirm={() => { if (createdListingId) router.push(`/listings/${createdListingId}/upload`); }}
+        onAutoClose={() => { if (createdListingId) router.push(`/listings/${createdListingId}/upload`); }}
+        onCancel={() => { if (createdListingId) router.push(`/listings/${createdListingId}/upload`); }}
       />
     </div>
   );

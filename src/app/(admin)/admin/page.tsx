@@ -23,8 +23,8 @@ type AdminReport = {
     timeline: TimelineEntry[];
   };
   active_users_over_time: TimelineEntry[];
-  waste_categories_distribution: {
-    waste_type: string;
+  category_distribution: {
+    category: string;
     listing_count: number;
     total_quantity: string | number;
   }[];
@@ -87,7 +87,7 @@ export default function AdminDashboardPage() {
   
   // Listings
   const [listingUserQuery, setListingUserQuery] = useState("");
-  const [listingWasteType, setListingWasteType] = useState("");
+  const [listingCategory, setListingCategory] = useState("");
   const [listingLocation, setListingLocation] = useState("");
   
   // Orders
@@ -111,7 +111,7 @@ export default function AdminDashboardPage() {
     try {
       const params = new URLSearchParams();
       if (listingUserQuery) params.append("listing_user_query", listingUserQuery);
-      if (listingWasteType) params.append("listing_waste_type", listingWasteType);
+      if (listingCategory) params.append("listing_category", listingCategory);
       if (listingLocation) params.append("listing_location", listingLocation);
       const csv = await apiFetch<string>(`/api/reports/admin/listings.csv/?${params.toString()}`, {}, { auth: true });
       downloadCsvFromText("admin_listings.csv", csv);
@@ -175,10 +175,10 @@ export default function AdminDashboardPage() {
       ["Sold Listings", data.marketplace_liquidity.sold_listings],
       ["Unsold Listings", data.marketplace_liquidity.unsold_listings],
       [""],
-      ["Waste Categories"],
-      ["Waste Type", "Listing Count", "Total Quantity"],
-      ...data.waste_categories_distribution.map((category) => [
-        category.waste_type,
+      ["Categories"],
+      ["Category", "Listing Count", "Total Quantity"],
+      ...data.category_distribution.map((category) => [
+        category.category,
         category.listing_count,
         category.total_quantity,
       ]),
@@ -325,14 +325,14 @@ export default function AdminDashboardPage() {
           {/* Categories Chart */}
           <div className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-[var(--brand-strong)]">Category Distribution</h2>
-            <p className="mt-1 text-sm text-neutral-600">Breakdown of listed waste types across the entire platform.</p>
-            {data.waste_categories_distribution.length === 0 ? (
+            <p className="mt-1 text-sm text-neutral-600">Breakdown of listed categories across the entire platform.</p>
+            {data.category_distribution.length === 0 ? (
               <p className="mt-4 text-sm text-neutral-500">No categories found.</p>
             ) : (
               <div className="mt-6 flex flex-wrap gap-4">
-                {data.waste_categories_distribution.map((cat, i) => (
+                {data.category_distribution.map((cat, i) => (
                   <div key={i} className="min-w-[150px] flex-1 rounded-xl border border-[var(--line)] bg-[var(--card)] p-4 text-center">
-                    <p className="text-sm font-semibold text-[var(--brand-strong)]">{cat.waste_type}</p>
+                    <p className="text-sm font-semibold text-[var(--brand-strong)]">{cat.category}</p>
                     <p className="mt-1 text-xl font-bold text-[var(--brand)]">{formatQty(cat.total_quantity)}</p>
                     <p className="mt-0.5 text-xs text-neutral-500">{cat.listing_count} listings</p>
                   </div>
@@ -390,9 +390,9 @@ export default function AdminDashboardPage() {
                 />
                 <input 
                   type="text" 
-                  placeholder="Waste Type" 
-                  value={listingWasteType} 
-                  onChange={e => setListingWasteType(e.target.value)} 
+                  placeholder="Category (e.g. equipment)" 
+                  value={listingCategory} 
+                  onChange={e => setListingCategory(e.target.value)} 
                   className="w-full rounded-xl border p-2 text-sm"
                 />
                 <input 

@@ -15,15 +15,27 @@ export function useRequestNotifications() {
 
     const load = async () => {
       try {
+        let total = 0;
+
         if (role === "FARMER") {
-          const data = await getIncomingRequests();
+          // Count pending incoming requests on farmer's own listings
+          const incoming = await getIncomingRequests();
           if (!mounted) return;
-          const list = Array.isArray(data) ? data : [];
-          setCount(list.filter((item) => (item.status || "PENDING") === "PENDING").length);
+          const incomingList = Array.isArray(incoming) ? incoming : [];
+          total += incomingList.filter((item) => (item.status || "PENDING") === "PENDING").length;
+
+          // Also count farmer's outgoing requests that got accepted
+          // (when a farmer buys from another farmer)
+          const outgoing = await getMyRequests();
+          if (!mounted) return;
+          const outgoingList = Array.isArray(outgoing) ? outgoing : [];
+          total += outgoingList.filter((item) => item.status === "ACCEPTED").length;
+
+          setCount(total);
           return;
         }
 
-        if (role === "PROCESSOR") {
+        if (role === "BUYER" || role === "CONTRACTOR") {
           const data = await getMyRequests();
           if (!mounted) return;
           const list = Array.isArray(data) ? data : [];

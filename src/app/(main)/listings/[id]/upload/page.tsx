@@ -5,7 +5,7 @@ import { apiFetch } from "@/app/lib/api";
 import ImagePicker from "@/app/components/ImagePicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { WasteListingDetail } from "@/app/lib/types";
+import type { ListingDetail } from "@/app/lib/types";
 import { useEffect } from "react";
 import { useAuthState } from "@/app/lib/useAuthState";
 import ConfirmationModal from "@/app/components/ConfirmationModal";
@@ -16,7 +16,7 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
   const { accessToken, role, username } = useAuthState();
   const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
   const [checkingOwner, setCheckingOwner] = useState(true);
-  const isOwnerFarmer = role === "FARMER" && !!username && ownerUsername === username;
+  const isOwner = (role === "FARMER" || role === "CONTRACTOR") && !!username && ownerUsername === username;
   const [err, setErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadSucceeded, setUploadSucceeded] = useState(false);
@@ -24,7 +24,7 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
   useEffect(() => {
     let mounted = true;
     setCheckingOwner(true);
-    apiFetch<WasteListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
+    apiFetch<ListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
       .then((listing) => mounted && setOwnerUsername(listing.farmer_username))
       .catch((e: unknown) => mounted && setErr(e instanceof Error ? e.message : "Failed to verify listing ownership"))
       .finally(() => mounted && setCheckingOwner(false));
@@ -33,27 +33,31 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
     };
   }, [id]);
 
-  async function upload(file: File) {
-    if (!isOwnerFarmer) {
-      setErr("Only the farmer who created this listing can upload images.");
+  async function upload(files: File[]) {
+    if (!isOwner) {
+      setErr("Only the owner of this listing can upload images.");
       return;
     }
     setErr(null);
     setUploading(true);
 
     try {
-      const fd = new FormData();
-      fd.append("image", file);
-      fd.append("is_primary", "true");
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("image", file);
+        // Additional images uploaded via this page are not primary by default,
+        // unless it's the very first image. Backend can handle the logic, or we just pass false.
+        fd.append("is_primary", "false"); 
 
-      await apiFetch(`/api/v1/listings/${id}/images/`, {
-        method: "POST",
-        body: fd,
-      });
+        await apiFetch(`/api/v1/listings/${id}/images/`, {
+          method: "POST",
+          body: fd,
+        });
+      }
 
       setUploadSucceeded(true);
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Upload failed");
+      setErr(e instanceof Error ? e.message : "Upload failed for some images");
     } finally {
       setUploading(false);
     }
@@ -68,7 +72,7 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
           <Link href="/login" className="font-semibold underline">
             log in
           </Link>{" "}
-          as a farmer to upload images.
+          to upload images.
         </p>
       </div>
     );
@@ -78,12 +82,12 @@ export default function UploadListingImagePage({ params }: { params: Promise<{ i
     return <p className="text-sm text-neutral-500">Checking ownership...</p>;
   }
 
-  if (!isOwnerFarmer) {
+  if (!isOwner) {
     return (
       <div className="space-y-3 rounded-2xl border bg-white p-4">
         <h1 className="text-xl font-bold">Upload images</h1>
         <p className="text-sm text-neutral-600">
-          Only the farmer who created this listing can upload images.
+          Only the owner of this listing can upload images.
         </p>
       </div>
     );

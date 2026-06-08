@@ -58,7 +58,7 @@ export default function RegisterPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [role, setRole] = useState<"FARMER" | "PROCESSOR">("FARMER");
+  const [role, setRole] = useState<"FARMER" | "BUYER" | "CONTRACTOR">("FARMER");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -156,10 +156,11 @@ export default function RegisterPage() {
           <select
             className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-3 text-sm"
             value={role}
-            onChange={(e) => setRole(e.target.value as "FARMER" | "PROCESSOR")}
+            onChange={(e) => setRole(e.target.value as "FARMER" | "BUYER" | "CONTRACTOR")}
           >
             <option value="FARMER">Farmer</option>
-            <option value="PROCESSOR">Processor</option>
+            <option value="BUYER">Buyer</option>
+            <option value="CONTRACTOR">Contractor</option>
           </select>
         </div>
 

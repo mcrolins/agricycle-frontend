@@ -7,7 +7,8 @@ type AdminUser = {
 
 type UserListing = {
   id: number;
-  waste_type: string;
+  title: string;
+  category: string;
   quantity: string;
   unit: string;
   price: string;
@@ -19,8 +20,9 @@ type UserListing = {
 
 type UserOrder = {
   id: number;
-  processor_username: string;
-  listing_waste_type: string;
+  buyer_username: string;
+  listing_title: string;
+  listing_category: string;
   listing_farmer_username: string;
   quantity_requested: string;
   proposed_price: string;
@@ -120,7 +122,7 @@ export async function GET(
     ),
     orders: (Array.isArray(ordersResponse.data) ? ordersResponse.data : []).filter(
       (order) =>
-        order.processor_username === username || order.listing_farmer_username === username
+        order.buyer_username === username || order.listing_farmer_username === username
     ),
   };
 

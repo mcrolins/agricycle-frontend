@@ -4,17 +4,21 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/app/lib/api";
-import type { WasteListingDetail } from "@/app/lib/types";
+import type { ListingDetail } from "@/app/lib/types";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { kenyaLocationListId, kenyaLocationSuggestions } from "@/app/lib/kenyaLocations";
 
 type UpdateListingPayload = {
-  waste_type: string;
+  title: string;
+  description: string;
+  category: string;
   quantity: number;
   unit: string;
   location: string;
-  notes: string;
   status: string;
+  listing_type: string;
+  condition?: string;
+  rental_period?: string;
   price?: number;
 };
 
@@ -23,21 +27,29 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const { accessToken, role, username } = useAuthState();
   const [form, setForm] = useState({
-    waste_type: "",
+    title: "",
+    description: "",
+    category: "FRESH_PRODUCE",
     quantity: "",
     unit: "kg",
     location: "",
     price: "",
-    notes: "",
+    listing_type: "SALE",
+    condition: "NEW",
+    rental_period: "PER_DAY",
     status: "OPEN",
   });
   const [initialForm, setInitialForm] = useState({
-    waste_type: "",
+    title: "",
+    description: "",
+    category: "FRESH_PRODUCE",
     quantity: "",
     unit: "kg",
     location: "",
     price: "",
-    notes: "",
+    listing_type: "SALE",
+    condition: "NEW",
+    rental_period: "PER_DAY",
     status: "OPEN",
   });
   const [ownerUsername, setOwnerUsername] = useState<string | null>(null);
@@ -45,22 +57,26 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const isOwnerFarmer = role === "FARMER" && !!username && ownerUsername === username;
+  const isOwnerSeller = (role === "FARMER" || role === "CONTRACTOR") && !!username && ownerUsername === username;
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    apiFetch<WasteListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
+    apiFetch<ListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
       .then((listing) => {
         if (!mounted) return;
         setOwnerUsername(listing.farmer_username);
         const hydratedForm = {
-          waste_type: listing.waste_type ?? "",
+          title: listing.title ?? "",
+          description: listing.description ?? "",
+          category: listing.category ?? "FRESH_PRODUCE",
           quantity: String(listing.quantity ?? ""),
           unit: listing.unit ?? "kg",
           location: listing.location ?? "",
           price: listing.price ? String(listing.price) : "",
-          notes: listing.notes ?? "",
+          listing_type: listing.listing_type ?? "SALE",
+          condition: listing.condition ?? "NEW",
+          rental_period: listing.rental_period ?? "PER_DAY",
           status: listing.status ?? "OPEN",
         };
         setForm(hydratedForm);
@@ -85,7 +101,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isOwnerFarmer) {
+    if (!isOwnerSeller) {
       setErr("Only the listing owner can edit this listing.");
       return;
     }
@@ -94,13 +110,17 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     setSaving(true);
     try {
       const payload: UpdateListingPayload = {
-        waste_type: form.waste_type.trim(),
+        title: form.title.trim(),
+        description: form.description.trim(),
+        category: form.category,
         quantity: Number(form.quantity),
         unit: form.unit,
         location: form.location.trim(),
-        notes: form.notes.trim(),
         status: form.status,
+        listing_type: form.listing_type,
       };
+      if (form.category === "EQUIPMENT") payload.condition = form.condition;
+      if (form.listing_type === "RENTAL") payload.rental_period = form.rental_period;
       if (form.price.trim()) payload.price = Number(form.price);
 
       const endpoints = [`/api/v1/listings/${id}/`, `/api/v1/listings/${id}`];
@@ -150,12 +170,12 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (loading) return <p className="text-sm text-neutral-500">Loading listing...</p>;
 
-  if (!isOwnerFarmer) {
+  if (!isOwnerSeller) {
     return (
       <div className="rounded-2xl border bg-white p-4">
         <h1 className="text-xl font-bold">Edit Listing</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Only the farmer who created this listing can edit it.
+          Only the seller who created this listing can edit it.
         </p>
       </div>
     );
@@ -169,10 +189,32 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       <form onSubmit={onSubmit} className="space-y-3 rounded-2xl border bg-white p-4">
         <input
           className="w-full rounded-xl border px-3 py-3 text-sm"
-          placeholder="Waste type"
-          value={form.waste_type}
-          onChange={(e) => update("waste_type", e.target.value)}
+          placeholder="Title"
+          value={form.title}
+          onChange={(e) => update("title", e.target.value)}
         />
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <select className="w-full rounded-xl border px-3 py-3 text-sm" value={form.category} onChange={(e) => update("category", e.target.value)} disabled={role === "CONTRACTOR"}>
+            <option value="FRESH_PRODUCE">Fresh Produce</option>
+            <option value="ANIMAL_PRODUCE">Animal Produce</option>
+            <option value="FARM_WASTE">Farm Waste</option>
+            <option value="AGRI_INPUTS">Agri Inputs</option>
+            <option value="EQUIPMENT">Equipment</option>
+          </select>
+          <select className="w-full rounded-xl border px-3 py-3 text-sm" value={form.listing_type} onChange={(e) => update("listing_type", e.target.value)}>
+            <option value="SALE">For Sale</option>
+            <option value="RENTAL">For Rent</option>
+          </select>
+        </div>
+
+        {form.category === "EQUIPMENT" && (
+          <select className="w-full rounded-xl border px-3 py-3 text-sm" value={form.condition} onChange={(e) => update("condition", e.target.value)}>
+            <option value="NEW">New</option>
+            <option value="USED">Used</option>
+            <option value="REFURBISHED">Refurbished</option>
+          </select>
+        )}
 
         <div className="flex gap-2">
           <input
@@ -216,10 +258,18 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
         <textarea
           className="w-full rounded-xl border px-3 py-3 text-sm"
-          placeholder="Notes"
-          value={form.notes}
-          onChange={(e) => update("notes", e.target.value)}
+          placeholder="Description"
+          value={form.description}
+          onChange={(e) => update("description", e.target.value)}
         />
+
+        {form.listing_type === "RENTAL" && (
+          <select className="w-full rounded-xl border px-3 py-3 text-sm" value={form.rental_period} onChange={(e) => update("rental_period", e.target.value)}>
+            <option value="PER_DAY">Per Day</option>
+            <option value="PER_WEEK">Per Week</option>
+            <option value="PER_MONTH">Per Month</option>
+          </select>
+        )}
 
         <select className="w-full rounded-xl border px-3 py-3 text-sm" value={form.status} onChange={(e) => update("status", e.target.value)}>
           <option value="OPEN">OPEN</option>

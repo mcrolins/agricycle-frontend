@@ -159,7 +159,7 @@ export async function inferCurrentRole(): Promise<string | null> {
 
   const checks: Array<{ path: string; role: string }> = [
     { path: "/api/requests/incoming/", role: "FARMER" },
-    { path: "/api/requests/mine/", role: "PROCESSOR" },
+    { path: "/api/requests/mine/", role: "BUYER" },
   ];
 
   for (const check of checks) {

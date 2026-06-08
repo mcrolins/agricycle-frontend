@@ -5,9 +5,11 @@ import { apiFetch } from "@/app/lib/api";
 import AdminActionButton from "@/app/components/admin/AdminActionButton";
 import { downloadCsv, printCurrentPage } from "@/app/lib/reportUtils";
 
-type WasteListing = {
+type AdminListing = {
   id: number;
-  waste_type: string;
+  title: string;
+  category: string;
+  listing_type: string;
   quantity: string;
   unit: string;
   price: string;
@@ -38,7 +40,7 @@ function statusBadgeClass(status: string) {
 }
 
 export default function AdminListingsPage() {
-  const [listings, setListings] = useState<WasteListing[]>([]);
+  const [listings, setListings] = useState<AdminListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +48,7 @@ export default function AdminListingsPage() {
   const [nameFilter, setNameFilter] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [wasteTypeFilter, setWasteTypeFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
@@ -55,13 +57,13 @@ export default function AdminListingsPage() {
     try {
       const q = new URLSearchParams();
       if (statusFilter) q.set("status", statusFilter);
-      if (wasteTypeFilter) q.set("waste_type", wasteTypeFilter);
+      if (categoryFilter) q.set("category", categoryFilter);
       if (locationFilter) q.set("location", locationFilter);
       if (startDate) q.set("start_date", startDate);
       if (endDate) q.set("end_date", endDate);
 
       const qs = q.toString() ? `?${q.toString()}` : "";
-      const data = await apiFetch<WasteListing[]>(`/api/v1/listings/${qs}`);
+      const data = await apiFetch<AdminListing[]>(`/api/v1/listings/${qs}`);
       setListings(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
@@ -73,9 +75,8 @@ export default function AdminListingsPage() {
 
   useEffect(() => {
     void loadListings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, startDate, endDate]); 
-  // wasteTypeFilter requires manual submit to avoid spamming the API on every keystroke
+  // categoryFilter requires manual submit to avoid spamming the API on every keystroke
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -85,13 +86,13 @@ export default function AdminListingsPage() {
   const filteredListings = useMemo(() => {
     const normalizedNameFilter = nameFilter.trim().toLowerCase();
     const normalizedLocationFilter = locationFilter.trim().toLowerCase();
-    const normalizedWasteTypeFilter = wasteTypeFilter.trim().toLowerCase();
+    const normalizedCategoryFilter = categoryFilter.trim().toLowerCase();
     const normalizedStatusFilter = statusFilter.trim().toUpperCase();
 
     return listings.filter((listing) => {
       const matchesName =
         !normalizedNameFilter ||
-        [listing.farmer_username, listing.waste_type]
+        [listing.farmer_username, listing.title, listing.category]
           .join(" ")
           .toLowerCase()
           .includes(normalizedNameFilter);
@@ -100,9 +101,9 @@ export default function AdminListingsPage() {
         !normalizedLocationFilter ||
         (listing.location || "").toLowerCase().includes(normalizedLocationFilter);
 
-      const matchesWasteType =
-        !normalizedWasteTypeFilter ||
-        (listing.waste_type || "").toLowerCase().includes(normalizedWasteTypeFilter);
+      const matchesCategory =
+        !normalizedCategoryFilter ||
+        (listing.category || "").toLowerCase().includes(normalizedCategoryFilter);
 
       const matchesStatus =
         !normalizedStatusFilter || (listing.status || "").toUpperCase() === normalizedStatusFilter;
@@ -110,19 +111,21 @@ export default function AdminListingsPage() {
       return (
         matchesName &&
         matchesLocation &&
-        matchesWasteType &&
+        matchesCategory &&
         matchesStatus &&
         matchesDateRange(listing.created_at, startDate, endDate)
       );
     });
-  }, [endDate, listings, locationFilter, nameFilter, startDate, statusFilter, wasteTypeFilter]);
+  }, [endDate, listings, locationFilter, nameFilter, startDate, statusFilter, categoryFilter]);
 
   function downloadListings() {
     const rows: Array<Array<string | number>> = [
-      ["Listing ID", "Waste Type", "Quantity", "Unit", "Farmer", "Location", "Price (KES)", "Status", "Created"],
+      ["Listing ID", "Title", "Category", "Type", "Quantity", "Unit", "Farmer", "Location", "Price (KES)", "Status", "Created"],
       ...filteredListings.map((listing) => [
         listing.id,
-        listing.waste_type,
+        listing.title,
+        listing.category,
+        listing.listing_type,
         listing.quantity,
         listing.unit,
         listing.farmer_username,
@@ -166,12 +169,12 @@ export default function AdminListingsPage() {
           />
         </div>
         <div className="flex-1 min-w-[200px]">
-          <label className="mb-1 block text-xs font-semibold text-neutral-600">Waste Type</label>
+          <label className="mb-1 block text-xs font-semibold text-neutral-600">Category</label>
           <input
             type="text"
-            placeholder="e.g. husks"
-            value={wasteTypeFilter}
-            onChange={(e) => setWasteTypeFilter(e.target.value)}
+            placeholder="e.g. equipment"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
             className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm focus:border-[var(--brand)] focus:ring-1 focus:ring-[var(--brand)]"
           />
         </div>
@@ -233,7 +236,8 @@ export default function AdminListingsPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-[var(--surface)] text-xs font-semibold text-neutral-500">
               <tr>
-                <th className="px-5 py-4 uppercase tracking-wider">Item</th>
+                <th className="px-5 py-4 uppercase tracking-wider">Item Details</th>
+                <th className="px-5 py-4 uppercase tracking-wider">Type</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Farmer</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Location</th>
                 <th className="px-5 py-4 uppercase tracking-wider">Price (KES)</th>
@@ -256,8 +260,13 @@ export default function AdminListingsPage() {
                 filteredListings.map((l) => (
                   <tr key={l.id} className="transition hover:bg-neutral-50">
                     <td className="px-5 py-4">
-                      <p className="font-semibold text-neutral-900">{l.waste_type}</p>
-                      <p className="text-xs text-neutral-500">{l.quantity} {l.unit}</p>
+                      <p className="font-semibold text-neutral-900">{l.title}</p>
+                      <p className="text-xs text-neutral-500">{l.category} · {l.quantity} {l.unit}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-600">
+                        {l.listing_type}
+                      </span>
                     </td>
                     <td className="px-5 py-4 text-neutral-600">@{l.farmer_username}</td>
                     <td className="px-5 py-4 text-neutral-600">{l.location}</td>

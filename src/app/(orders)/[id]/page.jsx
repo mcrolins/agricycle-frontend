@@ -40,7 +40,7 @@ export default function RequestDetailPage() {
   const [complaintSuccess, setComplaintSuccess] = useState(false);
   const [complaintError, setComplaintError] = useState("");
 
-  const targetUser = contact ? (role === "FARMER" ? contact.processor : contact.farmer) : null;
+  const targetUser = contact ? (role === "FARMER" ? contact.buyer : contact.farmer) : null;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ quantity_requested: "", proposed_price: "", message: "" });
@@ -51,7 +51,7 @@ export default function RequestDetailPage() {
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
 
   const isPending = request?.status === "PENDING";
-  const isProcessor = role === "PROCESSOR";
+  const isBuyer = role === "BUYER" || role === "CONTRACTOR" || role === "FARMER";
 
   async function handleCancel() {
     setCancelLoading(true);
@@ -264,7 +264,7 @@ export default function RequestDetailPage() {
           <div className="rounded-2xl border bg-white p-4">
             <div className="flex justify-between items-start">
               <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Commercial Terms</p>
-              {isProcessor && isPending && (
+              {isBuyer && isPending && (
                 <div className="flex gap-2">
                   <button onClick={startEditing} className="text-xs font-semibold text-blue-600 hover:underline">Edit</button>
                   <button onClick={() => setShowCancelConfirmation(true)} disabled={cancelLoading} className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50">{cancelLoading ? "Cancelling..." : "Cancel"}</button>
@@ -313,9 +313,9 @@ export default function RequestDetailPage() {
                 <p className="mt-1 text-sm text-neutral-600">{contact.farmer.phone_number}</p>
               </div>
               <div className="rounded-xl bg-[var(--surface)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Processor</p>
-                <p className="mt-1 text-sm font-semibold text-neutral-900">{contact.processor.name}</p>
-                <p className="mt-1 text-sm text-neutral-600">{contact.processor.phone_number}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Buyer</p>
+                <p className="mt-1 text-sm font-semibold text-neutral-900">{contact.buyer.name}</p>
+                <p className="mt-1 text-sm text-neutral-600">{contact.buyer.phone_number}</p>
               </div>
             </div>
           )}

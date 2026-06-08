@@ -34,6 +34,7 @@ function StatFilterCard({ label, value, active, onClick }) {
 
 export default function MyRequestsPage() {
   const { role } = useAuthState();
+  const canViewRequests = role === "BUYER" || role === "CONTRACTOR" || role === "FARMER";
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -43,7 +44,7 @@ export default function MyRequestsPage() {
   const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
-    if (role && role !== "PROCESSOR") return;
+    if (role && !canViewRequests) return;
     let isMounted = true;
 
     getMyRequests()
@@ -60,7 +61,7 @@ export default function MyRequestsPage() {
     return () => {
       isMounted = false;
     };
-  }, [role]);
+  }, [canViewRequests, role]);
 
   const acceptedCount = requests.filter((item) => item.status === "ACCEPTED").length;
   const pendingCount = requests.filter((item) => (item.status || "PENDING") === "PENDING").length;
@@ -96,13 +97,13 @@ export default function MyRequestsPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Orders</p>
         <h1 className="mt-1 text-2xl font-bold text-[var(--brand-strong)] sm:text-3xl">My Requests</h1>
         <p className="mt-2 text-sm text-neutral-700">
-          Track every request you have sent, follow approvals, and filter the request list by status, waste type, and date.
+          Track every request you have sent, follow approvals, and filter the request list by status, category, and date.
         </p>
       </section>
 
-      {role && role !== "PROCESSOR" && (
+      {role && !canViewRequests && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          My requests are only available to processor accounts.{" "}
+          My requests are available to marketplace buyer accounts.{" "}
           <Link href="/orders/incoming" className="font-semibold underline">
             Go to incoming requests
           </Link>
@@ -110,10 +111,10 @@ export default function MyRequestsPage() {
         </div>
       )}
 
-      {role === "PROCESSOR" && loading && <p className="text-sm text-neutral-500">Loading your requests...</p>}
-      {role === "PROCESSOR" && error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {canViewRequests && loading && <p className="text-sm text-neutral-500">Loading your requests...</p>}
+      {canViewRequests && error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-      {role === "PROCESSOR" && !loading && !error && (
+      {canViewRequests && !loading && !error && (
         <div className="grid gap-3 sm:grid-cols-3">
           <StatFilterCard label="Total Requests" value={requests.length} active={statusFilter === "all"} onClick={() => setStatusFilter("all")} />
           <StatFilterCard label="Pending" value={pendingCount} active={statusFilter === "pending"} onClick={() => setStatusFilter("pending")} />
@@ -121,13 +122,13 @@ export default function MyRequestsPage() {
         </div>
       )}
 
-      {role === "PROCESSOR" && !loading && !error && acceptedCount > 0 && (
+      {canViewRequests && !loading && !error && acceptedCount > 0 && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
           You have {acceptedCount} accepted request{acceptedCount === 1 ? "" : "s"}. Open them to see the latest status and contact details.
         </div>
       )}
 
-      {role === "PROCESSOR" && !loading && !error && requests.length > 0 && (
+      {canViewRequests && !loading && !error && requests.length > 0 && (
         <section className="space-y-4 rounded-2xl border border-[var(--line)] bg-white p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -150,13 +151,13 @@ export default function MyRequestsPage() {
 
           <div className="grid gap-3 md:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500">Waste Type</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500">Category</label>
               <select
                 value={wasteTypeFilter}
                 onChange={(event) => setWasteTypeFilter(event.target.value)}
                 className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
               >
-                <option value="">All waste types</option>
+                <option value="">All categories</option>
                 {wasteTypeOptions.map((wasteType) => (
                   <option key={wasteType} value={wasteType}>
                     {wasteType}
@@ -190,7 +191,7 @@ export default function MyRequestsPage() {
         </section>
       )}
 
-      {role === "PROCESSOR" && !loading && !error && requests.length === 0 && (
+      {canViewRequests && !loading && !error && requests.length === 0 && (
         <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white p-8 text-center text-sm text-neutral-600">
           You have not placed any requests yet.
         </div>

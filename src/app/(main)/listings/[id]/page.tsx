@@ -3,375 +3,115 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { absUrl, apiFetch } from "@/app/lib/api";
-import type { ListingBid, WasteListingDetail } from "@/app/lib/types";
+import type { ListingDetail } from "@/app/lib/types";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/app/lib/useAuthState";
 import { createRequest } from "@/app/lib/orders";
 import ConfirmationModal from "@/app/components/ConfirmationModal";
+import CartDrawer from "@/app/components/CartDrawer";
 
-type PendingConfirmation =
-  | { type: "listing" }
-  | { type: "image"; imageId: number }
-  | null;
+type FarmerReview = {
+  id: number;
+  reviewer: number;
+  reviewer_name: string;
+  rating: number | null;
+  comment: string;
+  created_at: string;
+};
+
+type FarmerComplaint = {
+  id: number;
+  reporter: number;
+  reporter_name: string;
+  description: string;
+  created_at: string;
+};
 
 type FarmerProfile = {
-  average_rating?: string | number | null;
-  total_listings?: number;
-  accepted_listings?: number;
-  listings?: Array<{
-    id: number;
-    waste_type: string;
-    quantity: string | number;
-    unit: string;
-  }>;
-  reviews?: Array<{
-    id: number;
-    reviewer_name?: string | null;
-    rating: string | number;
-    comment?: string | null;
-  }>;
-  complaints?: Array<{
-    id: number;
-    reporter_name?: string | null;
-    description: string;
-  }>;
+  id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  total_listings: number;
+  accepted_listings: number;
+  average_rating: number | null;
+  reviews: FarmerReview[];
+  complaints: FarmerComplaint[];
 };
 
 export default function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [data, setData] = useState<WasteListingDetail | null>(null);
+  const { accessToken, role, username } = useAuthState();
+  
+  const [data, setData] = useState<ListingDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [bids, setBids] = useState<ListingBid[]>([]);
-  const [bidsErr, setBidsErr] = useState<string | null>(null);
-  const [bidsLoading, setBidsLoading] = useState(false);
-  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
-  const [imageActionErr, setImageActionErr] = useState<string | null>(null);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
-  const [requestForm, setRequestForm] = useState({
-    quantity_requested: "",
-    proposed_price: data?.price ? String(data.price) : "",
-    message: "",
-  });
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [cartSuccess, setCartSuccess] = useState(false);
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+
+  const [requestForm, setRequestForm] = useState({ quantity_requested: "", proposed_price: "", message: "" });
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestErr, setRequestErr] = useState<string | null>(null);
-  const [requestSuccessId, setRequestSuccessId] = useState<number | null>(null);
-  const [showRequestSuccessDialog, setShowRequestSuccessDialog] = useState(false);
-  const [requestTouched, setRequestTouched] = useState({
-    quantity_requested: false,
-    proposed_price: false,
-  });
+  const [showRequestModal, setShowRequestModal] = useState(false);
+
+  // Farmer profile (reviews, complaints, rating)
   const [farmerProfile, setFarmerProfile] = useState<FarmerProfile | null>(null);
-  const [showFarmerModal, setShowFarmerModal] = useState(false);
-
-  const { accessToken, role: currentRole, username: currentUsername } = useAuthState();
-  const isOwner = !!currentUsername && currentUsername === data?.farmer_username;
-  const canRequest = !!accessToken && currentRole !== "FARMER" && !isOwner;
-  const isOwnerFarmer = currentRole === "FARMER" && !!currentUsername && currentUsername === data?.farmer_username;
+  
+  const isOwner = !!username && username === data?.farmer_username;
+  const canBuy = !!accessToken && !isOwner && (role === "FARMER" || role === "BUYER" || role === "CONTRACTOR");
 
   useEffect(() => {
-    apiFetch<WasteListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
-      .then(setData)
+    apiFetch<ListingDetail>(`/api/v1/listings/${id}/`, { method: "GET" }, { auth: false })
+      .then(res => {
+        setData(res);
+        setRequestForm(prev => ({ ...prev, proposed_price: res.price ? String(res.price) : "" }));
+      })
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : "Failed to load listing"));
-  }, [accessToken, id]);
+  }, [id]);
 
+  // Fetch farmer profile once we have the farmer ID
   useEffect(() => {
-    setActiveImageIndex(0);
-  }, [data?.id]);
-
-  useEffect(() => {
-    if (!data) return;
-    setRequestForm((current) => ({
-      quantity_requested: current.quantity_requested,
-      proposed_price: current.proposed_price || (data.price ? String(data.price) : ""),
-      message: current.message,
-    }));
-  }, [data]);
-
-  useEffect(() => {
-    if (data?.farmer) {
-      apiFetch<FarmerProfile>(`/api/accounts/farmer/${data.farmer}/`, { method: "GET" }, { auth: false })
-        .then(setFarmerProfile)
-        .catch(console.error);
-    }
+    if (!data?.farmer) return;
+    apiFetch<FarmerProfile>(`/api/accounts/farmer/${data.farmer}/`, { method: "GET" }, { auth: false })
+      .then(setFarmerProfile)
+      .catch(() => {}); // Silently fail — profile section just won't show
   }, [data?.farmer]);
 
-  useEffect(() => {
-    let mounted = true;
-    setBidsLoading(true);
-    setBidsErr(null);
-
-    const endpoints = [`/api/v1/listings/${id}/bids/`, `/api/v1/bids/?listing=${id}`];
-
-    const load = async () => {
-      for (const endpoint of endpoints) {
-        try {
-          const payload = await apiFetch<unknown>(endpoint, { method: "GET" }, { auth: !!accessToken });
-          if (!mounted) return;
-          const list = Array.isArray(payload)
-            ? payload
-            : typeof payload === "object" && payload && Array.isArray((payload as { results?: unknown[] }).results)
-            ? ((payload as { results: unknown[] }).results ?? [])
-            : [];
-          setBids(list as ListingBid[]);
-          setBidsLoading(false);
-          return;
-        } catch (e: unknown) {
-          if (e instanceof Error && (e.message.includes("404") || e.message.includes("403") || e.message.includes("401"))) {
-            continue;
-          }
-          if (!mounted) return;
-          setBidsErr(e instanceof Error ? e.message : "Failed to load bids");
-          setBidsLoading(false);
-          return;
-        }
-      }
-      if (!mounted) return;
-      setBids([]);
-      setBidsErr(null);
-      setBidsLoading(false);
-    };
-
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [accessToken, id]);
-
-  async function deleteListing() {
-    if (!isOwnerFarmer) return;
-
-    setDeleteErr(null);
-    setDeleteLoading(true);
+  async function addToCart() {
+    if (!canBuy) return router.push("/login");
+    setAddingToCart(true);
     try {
-      const endpoints = [`/api/v1/listings/${id}/`, `/api/v1/listings/${id}`];
-      let deleted = false;
-      let lastErr: Error | null = null;
-      for (const endpoint of endpoints) {
-        try {
-          await apiFetch(endpoint, { method: "DELETE" });
-          deleted = true;
-          break;
-        } catch (e: unknown) {
-          if (e instanceof Error && e.message.includes("404")) {
-            lastErr = e;
-            continue;
-          }
-          throw e;
-        }
-      }
-      if (!deleted) throw lastErr ?? new Error("Delete endpoint not found.");
-      setPendingConfirmation(null);
-      router.push("/listings");
-    } catch (e: unknown) {
-      setDeleteErr(e instanceof Error ? e.message : "Failed to delete listing");
-    } finally {
-      setDeleteLoading(false);
-    }
-  }
-
-  async function updateBidStatus(bidId: number, nextStatus: "ACCEPTED" | "REJECTED") {
-    setActionLoadingId(bidId);
-    setBidsErr(null);
-    try {
-      const endpoints =
-        nextStatus === "ACCEPTED"
-          ? [
-              `/api/v1/bids/${bidId}/accept/`,
-              `/api/v1/listings/${id}/bids/${bidId}/accept/`,
-              `/api/v1/bids/${bidId}/`,
-            ]
-          : [
-              `/api/v1/bids/${bidId}/reject/`,
-              `/api/v1/listings/${id}/bids/${bidId}/reject/`,
-              `/api/v1/bids/${bidId}/`,
-            ];
-
-      let updated = false;
-      for (const endpoint of endpoints) {
-        try {
-          await apiFetch(endpoint, {
-            method: endpoint.endsWith("/") && (endpoint.includes("/accept/") || endpoint.includes("/reject/")) ? "POST" : "PATCH",
-            body: JSON.stringify({ status: nextStatus }),
-          });
-          updated = true;
-          break;
-        } catch (e: unknown) {
-          if (e instanceof Error && e.message.includes("404")) continue;
-          throw e;
-        }
-      }
-      if (!updated) throw new Error("Bid action endpoint not found.");
-
-      setBids((prev) => prev.map((bid) => (bid.id === bidId ? { ...bid, status: nextStatus } : bid)));
-    } catch (e: unknown) {
-      setBidsErr(e instanceof Error ? e.message : "Failed to update bid");
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
-
-  async function deleteImage(imageId: number) {
-    if (!isOwnerFarmer) return;
-
-    setImageActionErr(null);
-    setDeletingImageId(imageId);
-    try {
-      const endpoints = [
-        `/api/v1/listings/${id}/images/${imageId}/`,
-        `/api/v1/listings/${id}/images/${imageId}`,
-        `/api/v1/images/${imageId}/`,
-        `/api/v1/listing-images/${imageId}/`,
-      ];
-      let deleted = false;
-      let lastErr: Error | null = null;
-
-      for (const endpoint of endpoints) {
-        try {
-          await apiFetch(endpoint, { method: "DELETE" });
-          deleted = true;
-          break;
-        } catch (e: unknown) {
-          if (e instanceof Error && e.message.includes("404")) {
-            lastErr = e;
-            continue;
-          }
-          throw e;
-        }
-      }
-      if (!deleted) throw lastErr ?? new Error("Delete image endpoint not found.");
-      setPendingConfirmation(null);
-
-      setData((prev) => {
-        if (!prev) return prev;
-        const nextImages = prev.images.filter((img) => img.id !== imageId);
-        setActiveImageIndex((current) => {
-          if (nextImages.length === 0) return 0;
-          return Math.min(current, nextImages.length - 1);
-        });
-        return { ...prev, images: nextImages };
+      await apiFetch("/api/requests/cart/add/", {
+        method: "POST",
+        body: JSON.stringify({ listing_id: id, quantity: 1 }),
       });
-    } catch (e: unknown) {
-      setImageActionErr(e instanceof Error ? e.message : "Failed to delete image");
+      setCartSuccess(true);
+      setIsCartDrawerOpen(true);
+      setTimeout(() => setCartSuccess(false), 3000);
+    } catch (e) {
+      console.error(e);
     } finally {
-      setDeletingImageId(null);
+      setAddingToCart(false);
     }
   }
 
-  if (err) return <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>;
-  if (!data) return <p className="text-sm text-neutral-500">Loading...</p>;
-  const imageCount = data.images.length;
-  const hasImages = imageCount > 0;
-  const safeActiveIndex = hasImages ? Math.min(activeImageIndex, imageCount - 1) : 0;
-  const activeImage = hasImages ? data.images[safeActiveIndex] : null;
-  const requestQuantity = Number(requestForm.quantity_requested);
-  const requestPrice = Number(requestForm.proposed_price);
-  const listingQuantity = Number(data.quantity);
-  const acceptedQuantity = bids
-    .filter((bid) => (bid.status || "").toUpperCase() === "ACCEPTED")
-    .reduce((sum, bid) => sum + (Number(bid.quantity_requested ?? bid.quantity) || 0), 0);
-  const backendRemaining = data.remaining_quantity != null ? Number(data.remaining_quantity) : null;
-  const remainingQuantity = backendRemaining != null && Number.isFinite(backendRemaining)
-    ? backendRemaining
-    : (Number.isFinite(listingQuantity) ? Math.max(listingQuantity - acceptedQuantity, 0) : 0);
-  const availableQuantity = remainingQuantity > 0 ? remainingQuantity : listingQuantity;
-  const isListingOpen = ["OPEN", "REQUESTED"].includes(data.status);
-  const canStillRequestQuantity = availableQuantity > 0;
-  const isProcessor = currentRole === "PROCESSOR";
-  const bidSummary = data.bid_summary;
-  const hasRequestQuantity = requestForm.quantity_requested.trim().length > 0;
-  const hasRequestPrice = requestForm.proposed_price.trim().length > 0;
-  const hasRequestMessage = requestForm.message.trim().length > 0;
-  const requestQuantityValid = hasRequestQuantity && Number.isFinite(requestQuantity) && requestQuantity > 0;
-  const requestPriceValid = hasRequestPrice && Number.isFinite(requestPrice) && requestPrice >= 0;
-  const requestQuantityTooHigh = requestQuantityValid && Number.isFinite(availableQuantity) && availableQuantity > 0 && requestQuantity > availableQuantity;
-  const requestFormValid = requestQuantityValid && requestPriceValid && !requestQuantityTooHigh;
-  const requestQuantityError =
-    requestTouched.quantity_requested || requestSubmitting
-      ? !hasRequestQuantity
-        ? "Quantity is required."
-        : !Number.isFinite(requestQuantity) || requestQuantity <= 0
-        ? "Quantity must be greater than 0."
-        : requestQuantityTooHigh
-        ? "Requested quantity is higher than the listed amount."
-        : null
-      : null;
-  const requestPriceError =
-    requestTouched.proposed_price || requestSubmitting
-      ? !hasRequestPrice
-        ? "Price is required."
-        : !Number.isFinite(requestPrice) || requestPrice < 0
-        ? "Price cannot be negative."
-        : null
-      : null;
-  const totalRequestCost = requestQuantityValid && requestPriceValid ? requestQuantity * requestPrice : null;
-
-  function goPrevImage() {
-    if (!hasImages) return;
-    setActiveImageIndex((prev) => (prev - 1 + imageCount) % imageCount);
-  }
-
-  function goNextImage() {
-    if (!hasImages) return;
-    setActiveImageIndex((prev) => (prev + 1) % imageCount);
-  }
-
-  function updateRequestField(key: "quantity_requested" | "proposed_price" | "message", value: string) {
-    setRequestForm((current) => ({ ...current, [key]: value }));
-  }
-
-  function confirmPendingAction() {
-    if (pendingConfirmation?.type === "listing") {
-      void deleteListing();
-      return;
-    }
-
-    if (pendingConfirmation?.type === "image") {
-      void deleteImage(pendingConfirmation.imageId);
-    }
-  }
-
-  async function submitRequest(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canRequest || !data) return;
-
-    setRequestErr(null);
-    setRequestSuccessId(null);
-    setRequestTouched({
-      quantity_requested: true,
-      proposed_price: true,
-    });
+  async function submitRequest(e: React.FormEvent) {
+    e.preventDefault();
     setRequestSubmitting(true);
-
+    setRequestErr(null);
     try {
-      if (!requestFormValid) {
-        throw new Error("Enter a valid quantity and price before sending your request.");
-      }
-
-      const payload = {
-        listing: data.id,
-        listing_id: data.id,
+      await createRequest({
+        listing_id: Number(id),
         quantity_requested: Number(requestForm.quantity_requested),
         proposed_price: Number(requestForm.proposed_price),
-        message: requestForm.message.trim(),
-      };
-
-      const created = await createRequest(payload);
-      const createdId =
-        typeof created === "object" && created && "id" in created && typeof created.id === "number" ? created.id : null;
-
-      setRequestSuccessId(createdId);
-      setShowRequestSuccessDialog(true);
-      setRequestForm({
-        quantity_requested: "",
-        proposed_price: data.price ? String(data.price) : "",
-        message: "",
+        message: requestForm.message,
       });
+      setShowRequestModal(false);
+      router.push("/orders/my");
     } catch (error: unknown) {
       setRequestErr(error instanceof Error ? error.message : "Failed to submit request.");
     } finally {
@@ -379,567 +119,335 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  function formatDate(iso: string) {
+    return new Date(iso).toLocaleDateString("en-KE", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  function renderStars(rating: number | null) {
+    if (!rating) return <span className="text-xs text-slate-400">No rating</span>;
+    return (
+      <span className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <svg
+            key={star}
+            xmlns="http://www.w3.org/2000/svg"
+            className={`h-4 w-4 ${star <= rating ? "text-amber-400" : "text-slate-200"}`}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        ))}
+      </span>
+    );
+  }
+
+  if (err) return <div className="p-4 text-red-600">{err}</div>;
+  if (!data) return <div className="p-8 text-center text-slate-500">Loading...</div>;
+
+  const imageCount = data.images.length;
+  const hasImages = imageCount > 0;
+  const activeImage = hasImages ? data.images[activeImageIndex] : null;
+
+  const reviewCount = farmerProfile?.reviews.length ?? 0;
+  const complaintCount = farmerProfile?.complaints.length ?? 0;
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{data.waste_type}</h1>
-          <p className="text-sm text-neutral-600">
-            {availableQuantity} {data.unit} available · {data.location}
-          </p>
-          <p className="mt-1 text-xs text-neutral-500">@{data.farmer_username}</p>
-        </div>
-        <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] text-neutral-700">{data.status}</span>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl p-0">
+    <div className="pb-24 max-w-6xl mx-auto md:px-6 md:py-8">
+      <div className="md:grid md:grid-cols-2 md:gap-8 md:items-start">
+        {/* Left Column: Image Gallery */}
+        <div className="md:sticky md:top-24">
+          <div className="relative aspect-[4/3] md:aspect-square md:max-h-[600px] w-full bg-[var(--surface-strong)] md:rounded-2xl overflow-hidden">
         {hasImages ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-neutral-500">
-                {safeActiveIndex + 1} / {imageCount}
-              </p>
-              {imageCount > 1 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={goPrevImage}
-                    className="rounded-full border px-2.5 py-1 text-xs font-semibold"
-                    aria-label="Previous image"
-                  >
-                    Prev
-                  </button>
-                  <button
-                    type="button"
-                    onClick={goNextImage}
-                    className="rounded-full border px-2.5 py-1 text-xs font-semibold"
-                    aria-label="Next image"
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3 overflow-x-auto px-1 py-2">
-              {data.images.map((img, idx) => (
-                <div
-                  key={img.id}
-                  className={[
-                    "relative shrink-0 transition-all duration-300",
-                    idx === safeActiveIndex ? "scale-100 opacity-100" : "scale-90 opacity-70",
-                  ].join(" ")}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveImageIndex(idx);
-                      if (idx === safeActiveIndex) setIsLightboxOpen(true);
-                    }}
-                    className={[
-                      "overflow-hidden rounded-xl border-2 bg-neutral-100",
-                      idx === safeActiveIndex ? "border-[var(--brand)] ring-2 ring-[var(--brand-soft)]" : "border-transparent",
-                    ].join(" ")}
-                    aria-label={`Select image ${idx + 1}`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={absUrl(img.image)}
-                      alt={`${data.waste_type} image ${idx + 1}`}
-                      className={[
-                        "object-cover transition-transform",
-                        idx === safeActiveIndex ? "h-48 w-64 sm:h-56 sm:w-72" : "h-36 w-48 sm:h-44 sm:w-56",
-                      ].join(" ")}
-                    />
-                  </button>
-
-                  {isOwnerFarmer && (
-                    <button
-                      type="button"
-                      onClick={() => setPendingConfirmation({ type: "image", imageId: img.id })}
-                      disabled={deletingImageId === img.id}
-                      className="absolute -right-2 -top-2 rounded-full bg-red-600 p-1.5 text-white shadow disabled:opacity-60"
-                      aria-label="Delete image"
-                    >
-                      {deletingImageId === img.id ? (
-                        <span className="text-[10px]">...</span>
-                      ) : (
-                        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
-                          <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM8 9h2v9H8V9z" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-52 w-full items-center justify-center text-sm text-neutral-400">No images</div>
-        )}
-        <div className="mt-2 text-xs text-neutral-500">
-          {hasImages ? `${safeActiveIndex + 1} / ${data.images.length}` : "0 / 0"}
-        </div>
-        {imageActionErr && <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-700">{imageActionErr}</div>}
-      </div>
-      {isLightboxOpen && hasImages && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
-          <button
-            type="button"
-            onClick={() => setIsLightboxOpen(false)}
-            className="absolute right-4 top-4 rounded-full bg-white/15 px-3 py-2 text-sm font-semibold text-white hover:bg-white/25"
-          >
-            Close
-          </button>
-          <div className="relative w-full max-w-5xl">
+          <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={absUrl(activeImage!.image)} alt={`${data.waste_type} full view`} className="max-h-[80vh] w-full rounded-xl object-contain" />
+            <img 
+              src={absUrl(activeImage!.image)} 
+              alt={data.title} 
+              className="h-full w-full object-cover cursor-pointer" 
+              onClick={() => setIsLightboxOpen(true)}
+            />
             {imageCount > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={goPrevImage}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/20 px-3 py-2 text-sm font-semibold text-white hover:bg-white/30"
-                  aria-label="Previous image"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  onClick={goNextImage}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/20 px-3 py-2 text-sm font-semibold text-white hover:bg-white/30"
-                  aria-label="Next image"
-                >
-                  ›
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-2xl border bg-white p-4">
-        <p className="text-sm font-semibold">Listing Snapshot</p>
-        <div className="mt-2 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Original Quantity</p>
-            <p className="mt-1 text-sm font-semibold text-neutral-900">{data.quantity} {data.unit}</p>
-          </div>
-          <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Accepted Requests</p>
-            <p className="mt-1 text-sm font-semibold text-neutral-900">{acceptedQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} {data.unit}</p>
-          </div>
-          <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Quantity Left</p>
-            <p className="mt-1 text-sm font-semibold text-neutral-900">{remainingQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} {data.unit}</p>
-          </div>
-        </div>
-
-        <p className="mt-4 text-sm font-semibold">Listed Price</p>
-        <p className="mt-1 text-sm">{data.price ? `KES ${data.price} per ${data.unit}` : "Negotiable"}</p>
-
-        <p className="mt-4 text-sm font-semibold">Notes</p>
-        <p className="mt-1 text-sm text-neutral-700">{data.notes || "—"}</p>
-      </div>
-
-      {isProcessor && bidSummary && bidSummary.total_bids > 0 && (
-        <div className="rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Competitive Bids</h2>
-          <p className="mt-1 text-sm text-neutral-600">Other processors have also placed bids on this listing. Place a competitive offer to increase your chances.</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Bids</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{bidSummary.total_bids}</p>
-            </div>
-            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Pending / Accepted</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{bidSummary.pending_bids} / {bidSummary.accepted_bids}</p>
-            </div>
-            {bidSummary.price_range && (
-              <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Price Range</p>
-                <p className="mt-1 text-sm font-semibold text-neutral-900">KES {Number(bidSummary.price_range.min).toLocaleString()} – {Number(bidSummary.price_range.max).toLocaleString()}</p>
+              <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+                {data.images.map((_, idx) => (
+                  <div key={idx} className={`h-2 rounded-full transition-all ${idx === activeImageIndex ? "w-6 bg-[var(--brand)]" : "w-2 bg-white/60"}`} />
+                ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {farmerProfile && (
-        <div className="rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">About Farmer</h2>
-          <div className="mt-2 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-200 font-bold text-neutral-600">
-              {data.farmer_username[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="font-semibold">@{data.farmer_username}</p>
-              <p className="text-xs text-neutral-500">
-                {farmerProfile.average_rating ? `★ ${Number(farmerProfile.average_rating).toFixed(1)} Rating` : "No ratings yet"}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Listings</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.total_listings ?? 0}</p>
-            </div>
-            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Accepted Listings</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.accepted_listings || 0}</p>
-            </div>
-            <div className="rounded-xl bg-[var(--surface)] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Reviews</p>
-              <p className="mt-1 text-sm font-semibold text-neutral-900">{farmerProfile.reviews?.length || 0}</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setShowFarmerModal(true)}
-            className="mt-4 w-full rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-neutral-50 transition"
-          >
-            View Full Profile & Reviews
-          </button>
-        </div>
-      )}
-
-      <div className="rounded-2xl border bg-white p-4">
-        <h2 className="text-lg font-semibold">Request This Listing</h2>
-        <p className="mt-2 text-sm text-neutral-600">
-          {isListingOpen && canStillRequestQuantity
-            ? "Processors can send a request with quantity, price, and pickup notes."
-            : canStillRequestQuantity
-            ? "This listing still has available quantity. Place a competitive offer."
-            : "This listing has no quantity left to allocate."}
-        </p>
-        {!accessToken && (
-          <p className="mt-2 text-sm text-neutral-600">
-            Log in to submit a request.{" "}
-            <Link href="/login" className="font-semibold underline">
-              Go to login
-            </Link>
-          </p>
-        )}
-        {accessToken && isOwner && (
-          <p className="mt-2 text-sm text-neutral-600">
-            You cannot request your own listing.
-          </p>
-        )}
-        {accessToken && currentRole === "FARMER" && !isOwner && (
-          <p className="mt-2 text-sm text-neutral-600">
-            Farmer accounts can manage requests on their own listings, but only processor accounts can place new requests.
-          </p>
-        )}
-        {canRequest && isListingOpen && canStillRequestQuantity && (
-          <form onSubmit={submitRequest} className="mt-4 space-y-3">
-            <div className="rounded-2xl bg-[var(--surface)] p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand)]">Live Summary</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Requested Quantity</p>
-                  <p className="mt-1 text-sm font-semibold text-neutral-900">
-                    {requestQuantityValid ? `${requestQuantity} ${data.unit}` : "Not set"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Price Per {data.unit}</p>
-                  <p className="mt-1 text-sm font-semibold text-neutral-900">
-                    {requestPriceValid ? `KES ${requestPrice.toLocaleString()}` : "Not set"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Estimated Total</p>
-                  <p className="mt-1 text-sm font-semibold text-neutral-900">
-                    {totalRequestCost !== null ? `KES ${totalRequestCost.toLocaleString()}` : "Not set"}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3 rounded-xl bg-white px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Request State</p>
-                <p className="mt-1 text-sm font-semibold text-neutral-900">
-                  {requestSubmitting
-                    ? "Submitting"
-                    : requestFormValid
-                    ? "Ready to send"
-                    : hasRequestQuantity || hasRequestPrice || hasRequestMessage
-                    ? "Needs details"
-                    : "Waiting for input"}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Quantity Needed
-                <input
-                  required
-                  min="0"
-                  step="any"
-                  aria-invalid={requestQuantityError ? "true" : "false"}
-                  className={`mt-1 w-full rounded-xl border bg-white px-3 py-3 text-sm ${
-                    requestQuantityError ? "border-red-300 bg-red-50" : "border-[var(--line)]"
-                  }`}
-                  inputMode="decimal"
-                  placeholder={`e.g. ${availableQuantity}`}
-                  value={requestForm.quantity_requested}
-                  onBlur={() => setRequestTouched((current) => ({ ...current, quantity_requested: true }))}
-                  onChange={(event) => updateRequestField("quantity_requested", event.target.value)}
-                />
-                {requestQuantityError && <span className="mt-1 block text-[11px] normal-case text-red-600">{requestQuantityError}</span>}
-                {!requestQuantityError && (
-                  <span className="mt-1 block text-[11px] normal-case text-neutral-500">
-                    Up to {availableQuantity.toLocaleString(undefined, { maximumFractionDigits: 2 })} {data.unit} can still be requested.
-                  </span>
-                )}
-              </label>
-              <label className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                Price Per {data.unit}
-                <div className="relative mt-1">
-                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                    <span className="text-sm font-semibold text-neutral-500 normal-case">Ksh</span>
-                  </div>
-                  <input
-                    required
-                    min="0"
-                    step="any"
-                    aria-invalid={requestPriceError ? "true" : "false"}
-                    className={`w-full rounded-xl border bg-white py-3 pl-[3.25rem] pr-3 text-sm ${
-                      requestPriceError ? "border-red-300 bg-red-50" : "border-[var(--line)]"
-                    }`}
-                    inputMode="decimal"
-                    placeholder={data.price ? `e.g. ${data.price} per ${data.unit}` : `Enter amount per ${data.unit}`}
-                    value={requestForm.proposed_price}
-                    onBlur={() => setRequestTouched((current) => ({ ...current, proposed_price: true }))}
-                    onChange={(event) => updateRequestField("proposed_price", event.target.value)}
-                  />
-                </div>
-                {requestPriceError && <span className="mt-1 block text-[11px] normal-case text-red-600">{requestPriceError}</span>}
-                {!requestPriceError && (
-                  <span className="mt-1 block text-[11px] normal-case text-neutral-500">
-                    Enter your offer price for one {data.unit === "kg" ? "kilogram" : data.unit === "bags" ? "bag" : data.unit}.
-                  </span>
-                )}
-              </label>
-            </div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-              Message
-              <textarea
-                className="mt-1 min-h-28 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-3 text-sm"
-                placeholder="Share pickup expectations, timing, or any clarification for the farmer."
-                value={requestForm.message}
-                onChange={(event) => updateRequestField("message", event.target.value)}
-              />
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => updateRequestField("quantity_requested", String(availableQuantity))}
-                className="rounded-full border px-3 py-1.5 text-xs font-semibold"
-              >
-                Use remaining quantity
-              </button>
-              {data.price && (
-                <button
-                  type="button"
-                  onClick={() => updateRequestField("proposed_price", String(data.price))}
-                  className="rounded-full border px-3 py-1.5 text-xs font-semibold"
-                >
-                  Match listed unit price
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="submit"
-                disabled={requestSubmitting || !requestFormValid}
-                className="rounded-xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {requestSubmitting ? "Submitting..." : "Send Request"}
-              </button>
-              <Link href="/orders/my" className="rounded-xl border px-4 py-2 text-sm font-semibold">
-                View My Requests
-              </Link>
-            </div>
-
-            {!requestFormValid && (hasRequestQuantity || hasRequestPrice || hasRequestMessage) && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Add a valid quantity and price to activate request submission.
-              </div>
-            )}
-            {requestErr && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{requestErr}</div>}
-            {requestSuccessId && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                Request sent successfully.{" "}
-                <Link href={requestSuccessId ? `/orders/${requestSuccessId}` : "/orders/my"} className="font-semibold underline">
-                  {requestSuccessId ? "Open request" : "View my requests"}
-                </Link>
-              </div>
-            )}
-          </form>
+          </>
+        ) : (
+          <div className="flex h-full items-center justify-center text-slate-400">No Image</div>
         )}
       </div>
 
-      {isOwnerFarmer && (
-        <div className="space-y-3 rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Manage Listing</h2>
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/listings/${data.id}/edit`} className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
-              Edit Listing
-            </Link>
-            <Link href={`/listings/${data.id}/upload`} className="rounded-xl border px-4 py-2 text-sm font-semibold">
-              Upload Images
-            </Link>
-            <button
-              type="button"
-              onClick={() => setPendingConfirmation({ type: "listing" })}
-              disabled={deleteLoading}
-              className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+      {hasImages && imageCount > 1 && (
+        <div className="flex gap-2 overflow-x-auto p-4 scrollbar-hide">
+          {data.images.map((img, idx) => (
+            <button 
+              key={img.id} 
+              onClick={() => setActiveImageIndex(idx)}
+              className={`h-16 w-16 shrink-0 rounded-lg overflow-hidden border-2 ${idx === activeImageIndex ? "border-[var(--brand)]" : "border-transparent"}`}
             >
-              {deleteLoading ? "Deleting..." : "Delete Listing"}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={absUrl(img.image)} alt="" className="h-full w-full object-cover" />
             </button>
-          </div>
-          {deleteErr && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{deleteErr}</div>}
+          ))}
         </div>
       )}
+      </div>
 
-      {isOwnerFarmer && (
-        <div className="space-y-3 rounded-2xl border bg-white p-4">
-          <h2 className="text-lg font-semibold">Manage Bids</h2>
-          {bidsLoading && <p className="text-sm text-neutral-500">Loading bids...</p>}
-          {bidsErr && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{bidsErr}</div>}
-          {!bidsLoading && !bidsErr && bids.length === 0 && <p className="text-sm text-neutral-600">No bids yet.</p>}
-          <div className="space-y-2">
-            {bids.map((bid) => (
-              <div key={bid.id} className="rounded-xl border p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold">
-                    @{bid.processor_username || bid.bidder_username || "processor"} · {bid.quantity_requested ?? bid.quantity ?? "-"} {data.unit} at KES{" "}
-                    {(bid.proposed_price ?? bid.amount ?? bid.price ?? "-")} per {data.unit}
-                  </p>
-                  <span className="rounded-full bg-neutral-100 px-2 py-1 text-xs">{bid.status || "PENDING"}</span>
+      {/* Right Column: Details */}
+      <div className="flex flex-col gap-4 mt-4 md:mt-0">
+        {/* Main Details */}
+        <div className="p-4 md:p-6 bg-white shadow-sm border-y md:border border-[var(--line)] md:rounded-2xl">
+        <div className="flex items-start justify-between">
+          <h1 className="text-xl font-bold leading-tight text-[var(--foreground)]">{data.title}</h1>
+          {data.listing_type === "RENTAL" ? (
+            <span className="rounded bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">For Rent</span>
+          ) : (
+            <span className="rounded bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">For Sale</span>
+          )}
+        </div>
+        
+        <p className="mt-2 text-2xl font-bold text-[var(--accent)]">
+          {data.price ? `KES ${Number(data.price).toLocaleString()}` : "Price Negotiable"}
+          {data.rental_period && <span className="text-sm font-normal text-slate-500"> / {data.rental_period.replace('PER_', '').toLowerCase()}</span>}
+        </p>
+
+        <p className="mt-1 text-sm font-semibold text-slate-700">
+          Available: {data.quantity} {data.unit}
+        </p>
+      </div>
+
+      {/* Seller Details */}
+      <div className="p-4 md:p-6 bg-white shadow-sm border-y md:border border-[var(--line)] md:rounded-2xl">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Seller Details</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--brand-soft)] text-lg font-bold text-[var(--brand-strong)]">
+            {data.farmer_username[0].toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <p className="font-bold">@{data.farmer_username}</p>
+            <p className="text-xs font-medium text-slate-500">📍 {data.location}</p>
+          </div>
+          {/* Seller rating badge */}
+          {farmerProfile?.average_rating && (
+            <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <span className="text-sm font-bold text-amber-700">{farmerProfile.average_rating}</span>
+              <span className="text-[11px] text-amber-600">({reviewCount})</span>
+            </div>
+          )}
+        </div>
+
+        {/* Seller stats row */}
+        {farmerProfile && (
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+              <strong className="text-slate-700">{farmerProfile.total_listings}</strong> listings
+            </span>
+            <span className="flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <strong className="text-slate-700">{farmerProfile.accepted_listings}</strong> completed
+            </span>
+            {complaintCount > 0 && (
+              <span className="flex items-center gap-1 text-red-500">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <strong>{complaintCount}</strong> complaint{complaintCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Product Details */}
+      <div className="p-4 md:p-6 bg-white shadow-sm border-y md:border border-[var(--line)] md:rounded-2xl">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Product Details</h2>
+        <div className="grid grid-cols-2 gap-y-4 gap-x-2">
+          <div>
+            <p className="text-[10px] font-semibold uppercase text-slate-500">Category</p>
+            <p className="text-sm font-medium">{data.category_display || data.category}</p>
+          </div>
+          {data.condition && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase text-slate-500">Condition</p>
+              <p className="text-sm font-medium">{data.condition}</p>
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-4">
+          <p className="text-[10px] font-semibold uppercase text-slate-500">Description</p>
+          <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{data.description || "No description provided."}</p>
+        </div>
+      </div>
+
+      {/* Seller Reviews */}
+      <div className="bg-white shadow-sm border-y md:border border-[var(--line)] md:rounded-2xl overflow-hidden">
+        <div className="px-4 md:px-6 py-4 border-b border-[var(--line)] bg-slate-50 flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-600 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+            </svg>
+            Buyer Reviews
+          </h2>
+          <span className="text-xs font-semibold text-neutral-500 bg-white px-2.5 py-1 rounded-full border border-[var(--line)]">
+            {reviewCount}
+          </span>
+        </div>
+        <div className="divide-y divide-[var(--line)]">
+          {!farmerProfile ? (
+            <div className="p-6 text-center text-sm text-slate-400">Loading seller reviews...</div>
+          ) : reviewCount === 0 ? (
+            <div className="p-6 text-center">
+              <span className="text-3xl block mb-1.5">⭐</span>
+              <p className="text-sm font-medium text-slate-500">No reviews yet</p>
+              <p className="text-xs text-slate-400 mt-0.5">Be the first to transact with this seller</p>
+            </div>
+          ) : (
+            farmerProfile.reviews.map((review) => (
+              <div key={review.id} className="p-4 md:px-6">
+                <div className="flex items-start justify-between gap-3 mb-1">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">
+                      {(review.reviewer_name || "U")[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-neutral-800">{review.reviewer_name || `User #${review.reviewer}`}</span>
+                      <p className="text-[11px] text-neutral-400">{formatDate(review.created_at)}</p>
+                    </div>
+                  </div>
+                  {renderStars(review.rating)}
                 </div>
-                {!!(bid.message || bid.notes) && <p className="mt-1 text-sm text-neutral-700">{bid.message || bid.notes}</p>}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={actionLoadingId === bid.id}
-                    onClick={() => updateBidStatus(bid.id, "ACCEPTED")}
-                    className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionLoadingId === bid.id}
-                    onClick={() => updateBidStatus(bid.id, "REJECTED")}
-                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                  >
-                    Reject
-                  </button>
+                {review.comment && (
+                  <p className="text-sm text-neutral-600 mt-1.5 pl-9 leading-relaxed">{review.comment}</p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Seller Complaints */}
+      {complaintCount > 0 && (
+        <div className="bg-white shadow-sm border-y md:border border-[var(--line)] md:rounded-2xl overflow-hidden">
+          <div className="px-4 md:px-6 py-4 border-b border-[var(--line)] bg-red-50 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-red-700 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Complaints
+            </h2>
+            <span className="text-xs font-semibold text-red-600 bg-white px-2.5 py-1 rounded-full border border-red-200">
+              {complaintCount}
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--line)]">
+            {farmerProfile!.complaints.map((complaint) => (
+              <div key={complaint.id} className="p-4 md:px-6">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-[11px] font-bold text-red-700">
+                    {(complaint.reporter_name || "U")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-neutral-800">{complaint.reporter_name || `User #${complaint.reporter}`}</span>
+                    <p className="text-[11px] text-neutral-400">{formatDate(complaint.created_at)}</p>
+                  </div>
                 </div>
+                <p className="text-sm text-neutral-600 pl-9 leading-relaxed">{complaint.description}</p>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {currentRole === "FARMER" && !isOwnerFarmer && (
-        <p className="text-sm text-neutral-600">This listing belongs to another farmer. You cannot edit or manage it.</p>
+      </div>
+    </div>
+
+      {/* Floating Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 w-full bg-white p-3 md:p-4 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] border-t border-[var(--line)] z-40 flex justify-center">
+        <div className="w-full max-w-6xl mx-auto flex gap-3">
+        {isOwner ? (
+          <Link href={`/listings/${id}/edit`} className="w-full py-3.5 rounded-full bg-slate-900 text-white font-bold text-center">
+            Edit Listing
+          </Link>
+        ) : canBuy ? (
+          <>
+            <button 
+              onClick={() => setShowRequestModal(true)}
+              className="flex-1 py-3.5 rounded-full border-2 border-[var(--brand)] text-[var(--brand)] font-bold text-center transition-colors hover:bg-[var(--brand-soft)]"
+            >
+              Negotiate Offer
+            </button>
+            <button 
+              onClick={addToCart}
+              disabled={addingToCart || cartSuccess}
+              className={`flex-1 py-3.5 rounded-full text-white font-bold text-center transition-colors shadow-sm ${cartSuccess ? 'bg-green-500' : 'bg-[var(--accent)] hover:bg-[var(--accent-strong)]'}`}
+            >
+              {addingToCart ? "Adding..." : cartSuccess ? "Added ✓" : "Add to Cart"}
+            </button>
+          </>
+        ) : !accessToken ? (
+          <Link href="/login" className="w-full py-3.5 rounded-full bg-[var(--brand)] text-white font-bold text-center">
+            Log in to Buy
+          </Link>
+        ) : null}
+        </div>
+      </div>
+
+      {/* Lightbox */}
+      {isLightboxOpen && hasImages && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setIsLightboxOpen(false)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={absUrl(activeImage!.image)} className="max-h-[85vh] max-w-full rounded-xl object-contain" alt="" />
+        </div>
       )}
 
-      {showFarmerModal && farmerProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="relative w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-            <button
-              onClick={() => setShowFarmerModal(false)}
-              className="absolute right-4 top-4 rounded-full bg-neutral-100 p-2 text-neutral-600 hover:bg-neutral-200"
-            >
-              ✕
-            </button>
-            <h2 className="text-xl font-bold">Farmer Profile: @{data.farmer_username}</h2>
+      {/* Request Modal */}
+      {showRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
+          <div className="w-full max-w-[480px] rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl transition-transform animate-slide-up sm:animate-none">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Negotiate Offer</h2>
+              <button onClick={() => setShowRequestModal(false)} className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-500">✕</button>
+            </div>
             
-            <div className="mt-6">
-              <h3 className="font-semibold text-neutral-900">Recent Listings</h3>
-              {farmerProfile.listings && farmerProfile.listings.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {farmerProfile.listings.map((l) => (
-                    <div key={l.id} className="rounded-xl border p-3 text-sm">
-                      <span className="font-semibold">{l.waste_type}</span> - {l.quantity} {l.unit}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-500 mt-1">No listings.</p>
-              )}
-            </div>
-
-            <div className="mt-6">
-              <h3 className="font-semibold text-neutral-900">Reviews & Ratings</h3>
-              {farmerProfile.reviews && farmerProfile.reviews.length > 0 ? (
-                <div className="mt-2 space-y-3">
-                  {farmerProfile.reviews.map((r) => (
-                    <div key={r.id} className="rounded-xl bg-neutral-50 p-3 text-sm">
-                      <div className="flex justify-between font-semibold">
-                        <span>{r.reviewer_name || 'Anonymous'}</span>
-                        <span className="text-amber-500">★ {r.rating}</span>
-                      </div>
-                      {r.comment && <p className="mt-1 text-neutral-700">{r.comment}</p>}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-500 mt-1">No reviews yet.</p>
-              )}
-            </div>
-
-            <div className="mt-6">
-              <h3 className="font-semibold text-neutral-900">Public Complaints</h3>
-              {farmerProfile.complaints && farmerProfile.complaints.length > 0 ? (
-                <div className="mt-2 space-y-3">
-                  {farmerProfile.complaints.map((c) => (
-                    <div key={c.id} className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-800">
-                      <p className="font-semibold">{c.reporter_name || 'Anonymous'}</p>
-                      <p className="mt-1">{c.description}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-neutral-500 mt-1">No complaints reported.</p>
-              )}
-            </div>
+            <form onSubmit={submitRequest} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-600">Quantity Needed ({data.unit})</label>
+                <input required type="number" min="1" max={data.quantity} className="w-full mt-1 rounded-xl border p-3 text-sm" 
+                  value={requestForm.quantity_requested} onChange={e => setRequestForm(f => ({ ...f, quantity_requested: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-600">Your Offer Price (KES)</label>
+                <input required type="number" min="0" className="w-full mt-1 rounded-xl border p-3 text-sm" 
+                  value={requestForm.proposed_price} onChange={e => setRequestForm(f => ({ ...f, proposed_price: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-600">Message to Seller</label>
+                <textarea className="w-full mt-1 rounded-xl border p-3 text-sm h-24" placeholder="Hello, I would like to buy..."
+                  value={requestForm.message} onChange={e => setRequestForm(f => ({ ...f, message: e.target.value }))} />
+              </div>
+              
+              {requestErr && <div className="text-red-500 text-sm font-semibold">{requestErr}</div>}
+              
+              <button disabled={requestSubmitting} className="w-full py-4 rounded-xl bg-[var(--brand)] text-white font-bold text-center mt-2 disabled:opacity-50">
+                {requestSubmitting ? "Sending..." : "Send Offer"}
+              </button>
+            </form>
           </div>
         </div>
       )}
 
-      <ConfirmationModal
-        open={!!pendingConfirmation}
-        title={pendingConfirmation?.type === "image" ? "Delete image?" : "Delete listing?"}
-        message={
-          pendingConfirmation?.type === "image"
-            ? "This image will be removed from the listing. This action cannot be undone."
-            : "This listing and its details will be permanently deleted. This action cannot be undone."
-        }
-        confirmLabel={pendingConfirmation?.type === "image" ? "Delete Image" : "Delete Listing"}
-        variant="danger"
-        loading={deleteLoading || deletingImageId != null}
-        onConfirm={confirmPendingAction}
-        onCancel={() => {
-          if (!deleteLoading && deletingImageId == null) setPendingConfirmation(null);
-        }}
-      />
-      <ConfirmationModal
-        open={showRequestSuccessDialog}
-        title="Request sent"
-        message="Your request was submitted successfully. You can review it from your orders page."
-        confirmLabel={requestSuccessId ? "Open Request" : "View My Requests"}
-        variant="success"
-        showCancel={false}
-        autoCloseMs={3000}
-        onConfirm={() => router.push(requestSuccessId ? `/orders/${requestSuccessId}` : "/orders/my")}
-        onAutoClose={() => setShowRequestSuccessDialog(false)}
-        onCancel={() => setShowRequestSuccessDialog(false)}
-      />
+      {/* Cart Drawer */}
+      <CartDrawer isOpen={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)} />
     </div>
   );
 }
